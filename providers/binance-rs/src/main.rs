@@ -172,15 +172,17 @@ async fn run_grpc_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Create graceful shutdown handler
-    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+    // Create graceful shutdown handler with broadcast channel (supports multiple receivers)
+    let (shutdown_tx, _shutdown_rx) = tokio::sync::broadcast::channel::<()>(1);
+    let mut server_shutdown_rx = shutdown_tx.subscribe();
 
     // Spawn shutdown signal handler
+    let signal_tx = shutdown_tx.clone();
     tokio::spawn(async move {
         match tokio::signal::ctrl_c().await {
             Ok(()) => {
                 tracing::info!("Received shutdown signal (Ctrl+C)");
-                let _ = shutdown_tx.send(());
+                let _ = signal_tx.send(());
             }
             Err(err) => {
                 tracing::error!("Failed to listen for shutdown signal: {}", err);
@@ -188,11 +190,42 @@ async fn run_grpc_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
+    // Pre-subscribe to symbols and spawn snapshot persistence task (T015-T020)
+    #[cfg(feature = "orderbook_analytics")]
+    {
+        // T015: Pre-subscribe to BTCUSDT WebSocket
+        if let Err(e) = provider.orderbook_manager.subscribe("BTCUSDT").await {
+            tracing::error!("Failed to pre-subscribe to BTCUSDT: {}", e);
+        } else {
+            // T017: INFO logging for pre-subscription
+            tracing::info!("Pre-subscribed to BTCUSDT for snapshot persistence");
+        }
+
+        // T016: Pre-subscribe to ETHUSDT WebSocket
+        if let Err(e) = provider.orderbook_manager.subscribe("ETHUSDT").await {
+            tracing::error!("Failed to pre-subscribe to ETHUSDT: {}", e);
+        } else {
+            // T017: INFO logging for pre-subscription
+            tracing::info!("Pre-subscribed to ETHUSDT for snapshot persistence");
+        }
+
+        // T018: Spawn snapshot persistence task
+        let persistence_shutdown_rx = shutdown_tx.subscribe();
+        let _persistence_handle = binance_provider::orderbook::analytics::storage::spawn_snapshot_persistence_task(
+            provider.analytics_storage.clone(),
+            provider.orderbook_manager.clone(),
+            &["BTCUSDT", "ETHUSDT"], // T020: Verify correct symbol parameters
+            persistence_shutdown_rx, // T019: Pass shutdown_rx for graceful shutdown
+        );
+
+        tracing::info!("Snapshot persistence task spawned for BTCUSDT, ETHUSDT");
+    }
+
     // Start the gRPC server with graceful shutdown
     Server::builder()
         .add_service(ProviderServer::new(provider))
-        .serve_with_shutdown(addr, async {
-            shutdown_rx.await.ok();
+        .serve_with_shutdown(addr, async move {
+            server_shutdown_rx.recv().await.ok();
             tracing::info!("Shutting down gRPC server...");
         })
         .await?;

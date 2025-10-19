@@ -90,6 +90,45 @@ impl OrderBookManager {
         }
     }
 
+    /// Subscribe to order book updates for a symbol (eager initialization)
+    ///
+    /// Initiates WebSocket subscription and fetches initial REST API snapshot.
+    /// Idempotent - calling subscribe() for an already-subscribed symbol is a no-op.
+    ///
+    /// Use this for eager subscription (e.g., background persistence tasks).
+    /// For one-time queries, use get_order_book() which handles lazy initialization.
+    pub async fn subscribe(&self, symbol: &str) -> Result<(), ManagerError> {
+        let symbol_upper = symbol.to_uppercase();
+
+        // Check if already subscribed
+        {
+            let states = self.states.read().await;
+            if states.contains_key(&symbol_upper) {
+                debug!(symbol = %symbol_upper, "Already subscribed");
+                return Ok(());
+            }
+        }
+
+        // Need to subscribe
+        let mut states = self.states.write().await;
+
+        // Double-check after acquiring write lock (avoid race condition)
+        if states.contains_key(&symbol_upper) {
+            return Ok(());
+        }
+
+        // Check symbol limit
+        if states.len() >= MAX_CONCURRENT_SYMBOLS {
+            return Err(ManagerError::SymbolLimitReached);
+        }
+
+        // Initialize order book
+        self.initialize_order_book(&mut states, &symbol_upper)
+            .await?;
+
+        Ok(())
+    }
+
     /// Get order book for a symbol (lazy initialization)
     ///
     /// On first request:

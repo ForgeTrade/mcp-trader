@@ -120,6 +120,123 @@ impl SnapshotStorage {
     }
 }
 
+/// Spawn background task for periodic snapshot persistence
+///
+/// Captures orderbook snapshots every 1 second and persists to RocksDB.
+/// Gracefully shuts down when shutdown signal is received.
+///
+/// # Arguments
+/// * `storage` - RocksDB snapshot storage handle
+/// * `manager` - OrderBook manager for accessing current orderbook state
+/// * `symbols` - List of symbols to persist (e.g., ["BTCUSDT", "ETHUSDT"])
+/// * `shutdown_rx` - Broadcast receiver for shutdown signal
+///
+/// # Returns
+/// JoinHandle for the spawned task (allows awaiting on shutdown)
+pub fn spawn_snapshot_persistence_task(
+    storage: Arc<SnapshotStorage>,
+    manager: Arc<crate::orderbook::OrderBookManager>,
+    symbols: &[&str],
+    mut shutdown_rx: tokio::sync::broadcast::Receiver<()>,
+) -> tokio::task::JoinHandle<()> {
+    let symbols_owned: Vec<String> = symbols.iter().map(|s| s.to_string()).collect();
+
+    tokio::spawn(async move {
+        use snapshot::OrderBookSnapshot;
+
+        // T008: 1-second interval loop
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+        tracing::info!("Snapshot persistence task started for {} symbols", symbols_owned.len());
+
+        loop {
+            tokio::select! {
+                // T009: Graceful shutdown handling
+                _ = shutdown_rx.recv() => {
+                    tracing::info!("Snapshot persistence task shutting down");
+                    break;
+                }
+
+                // T008: 1-second tick
+                _ = interval.tick() => {
+                    for symbol in &symbols_owned {
+                        // T010: Capture snapshot from OrderBookManager
+                        let orderbook = match manager.get_order_book(symbol).await {
+                            Ok(ob) => ob,
+                            Err(e) => {
+                                // T014: ERROR-level logging for failures
+                                tracing::error!(
+                                    symbol = %symbol,
+                                    error = %e,
+                                    "Failed to get orderbook for snapshot"
+                                );
+                                continue;
+                            }
+                        };
+
+                        // Skip empty orderbooks
+                        if orderbook.bids.is_empty() && orderbook.asks.is_empty() {
+                            tracing::warn!(
+                                symbol = %symbol,
+                                "Skipping snapshot: empty orderbook"
+                            );
+                            continue;
+                        }
+
+                        // T011: Serialize to MessagePack
+                        let snapshot = OrderBookSnapshot::from_orderbook(&orderbook);
+
+                        // T021: DEBUG-level logging for snapshot capture details
+                        tracing::debug!(
+                            symbol = %symbol,
+                            timestamp = %snapshot.timestamp,
+                            update_id = %snapshot.update_id,
+                            bid_levels = %snapshot.bids.len(),
+                            ask_levels = %snapshot.asks.len(),
+                            "Captured orderbook snapshot"
+                        );
+
+                        let bytes = match snapshot.to_bytes() {
+                            Ok(b) => b,
+                            Err(e) => {
+                                // T014: ERROR-level logging for serialization failures
+                                tracing::error!(
+                                    symbol = %symbol,
+                                    timestamp = %snapshot.timestamp,
+                                    error = %e,
+                                    "Failed to serialize snapshot to MessagePack"
+                                );
+                                continue;
+                            }
+                        };
+
+                        // T012: Store in RocksDB
+                        if let Err(e) = storage.put(symbol, snapshot.timestamp, &bytes).await {
+                            // T014: ERROR-level logging for storage failures
+                            tracing::error!(
+                                symbol = %symbol,
+                                timestamp = %snapshot.timestamp,
+                                error = %e,
+                                "Failed to persist snapshot to RocksDB"
+                            );
+                        } else {
+                            // T013: INFO-level logging for successful persistence
+                            tracing::info!(
+                                symbol = %symbol,
+                                timestamp = %snapshot.timestamp,
+                                "Stored snapshot"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        tracing::info!("Snapshot persistence task stopped");
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
