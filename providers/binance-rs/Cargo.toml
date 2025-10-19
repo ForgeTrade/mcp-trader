@@ -46,7 +46,7 @@ hex = "0.4"
 chrono = "0.4"
 
 # Optional features
-tokio-tungstenite = { version = "0.28", optional = true }
+tokio-tungstenite = { version = "0.28", features = ["native-tls"], optional = true }
 rust_decimal = { version = "1.37", optional = true }
 governor = { version = "0.6", optional = true }
 
