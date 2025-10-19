@@ -58,11 +58,11 @@ AI Clients
   - 🔸 Order execution (5 tools): Place, cancel, query orders
   - 🔸 OrderBook analysis (3 tools): WebSocket-powered L1/L2 metrics, health monitoring
   - 🔸 **Advanced Analytics (5 tools)**: 🆕
-    - `get_recent_trades` - Recent trades with aggregation
-    - `get_volume_profile` - Volume distribution analysis
-    - `detect_market_anomalies` - Unusual market activity detection
-    - `get_microstructure_health` - Spread, slippage, fragmentation metrics
-    - `get_liquidity_vacuums` - Price level gap detection
+    - `get_order_flow` - Bid/ask pressure tracking over time windows
+    - `get_volume_profile` - Volume distribution histogram (POC/VAH/VAL)
+    - `detect_market_anomalies` - Quote stuffing, icebergs, flash crash risk
+    - `get_microstructure_health` - Composite market health scoring
+    - `get_liquidity_vacuums` - Low-volume price zones for stop-loss placement
 - **4 Resources**: Markdown-formatted data snapshots (with **LIVE data**)
   - `binance://market/{SYMBOL}` - Real-time market summary
   - `binance://account/balances` - Current account balances
