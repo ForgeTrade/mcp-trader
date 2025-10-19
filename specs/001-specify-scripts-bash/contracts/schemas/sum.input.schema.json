@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mcp-gateway.example.com/schemas/sum.input.json",
+  "title": "Sum Tool Input",
+  "description": "Input schema for sum.v1 tool that calculates the sum of an array of numbers",
+  "type": "object",
+  "properties": {
+    "numbers": {
+      "type": "array",
+      "description": "Array of numbers to sum",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 1,
+      "maxItems": 1000
+    }
+  },
+  "required": ["numbers"],
+  "additionalProperties": false
+}

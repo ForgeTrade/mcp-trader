@@ -1,0 +1,121 @@
+syntax = "proto3";
+
+package provider.v1;
+
+option go_package = "github.com/forgetrade/mcp-trader/providers/hello-go/internal/pb";
+
+import "google/protobuf/empty.proto";
+
+// Provider service contract for MCP capability providers
+// This contract is language-agnostic and can be implemented in Go, Rust, Python, etc.
+service Provider {
+  // Discover all capabilities exposed by this provider
+  rpc ListCapabilities(google.protobuf.Empty) returns (Capabilities);
+
+  // Invoke a tool with given arguments
+  rpc Invoke(InvokeRequest) returns (InvokeResponse);
+
+  // Read a resource by URI
+  rpc ReadResource(ResourceRequest) returns (ResourceResponse);
+
+  // Get a prompt template with arguments
+  rpc GetPrompt(PromptRequest) returns (PromptResponse);
+
+  // Optional: Stream events from provider to gateway
+  rpc Stream(StreamRequest) returns (stream CloudEvent);
+}
+
+// JSON payload wrapper (allows flexible schemas without proto coupling)
+message Json {
+  bytes value = 1;  // Raw JSON bytes
+}
+
+// Tool definition
+message Tool {
+  string name = 1;              // e.g., "echo.v1"
+  string description = 2;
+  Json input_schema = 3;        // JSON Schema 2020-12
+  Json output_schema = 4;       // Optional output schema
+}
+
+// Resource definition
+message Resource {
+  string uri_scheme = 1;        // e.g., "hello" for hello://greeting
+  string description = 2;
+  string mime_type = 3;         // e.g., "text/plain", "application/json"
+}
+
+// Prompt template definition
+message Prompt {
+  string name = 1;              // e.g., "hello-plan"
+  string description = 2;
+  Json args_schema = 3;         // JSON Schema for prompt arguments
+}
+
+// Provider capabilities response
+message Capabilities {
+  repeated Tool tools = 1;
+  repeated Resource resources = 2;
+  repeated Prompt prompts = 3;
+  string provider_version = 4;  // Optional provider version info
+}
+
+// Tool invocation request
+message InvokeRequest {
+  string tool_name = 1;         // Tool to invoke (without provider prefix)
+  Json payload = 2;             // Tool arguments as JSON
+  string correlation_id = 3;    // For distributed tracing
+}
+
+// Tool invocation response
+message InvokeResponse {
+  Json result = 1;              // Tool result as JSON
+  string error = 2;             // Error message if invocation failed
+}
+
+// Resource read request
+message ResourceRequest {
+  string uri = 1;               // Full URI (e.g., "hello://greeting")
+  string correlation_id = 2;
+}
+
+// Resource read response
+message ResourceResponse {
+  bytes content = 1;            // Resource content
+  string mime_type = 2;         // Content type
+  string error = 3;             // Error message if read failed
+}
+
+// Prompt get request
+message PromptRequest {
+  string prompt_name = 1;
+  Json arguments = 2;           // Prompt arguments as JSON
+  string correlation_id = 3;
+}
+
+// Prompt response
+message PromptResponse {
+  repeated PromptMessage messages = 1;
+  string error = 2;
+}
+
+// Prompt message (MCP prompt format)
+message PromptMessage {
+  string role = 1;              // "user", "assistant", "system"
+  string content = 2;           // Message content with parameters substituted
+}
+
+// Event streaming request (optional feature)
+message StreamRequest {
+  string topic = 1;             // e.g., "hello.events"
+}
+
+// CloudEvents 1.0 envelope
+message CloudEvent {
+  string id = 1;
+  string source = 2;            // e.g., "urn:provider:hello-go"
+  string type = 3;              // e.g., "provider.metric.reported"
+  string time = 4;              // RFC3339 timestamp
+  string specversion = 5;       // "1.0"
+  Json data = 6;                // Event payload
+}

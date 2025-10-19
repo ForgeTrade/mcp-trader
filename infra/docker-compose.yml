@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  nats:
+    image: nats:latest
+    container_name: mcp-trader-nats
+    command: "--jetstream --store_dir=/data"
+    ports:
+      - "4222:4222"  # NATS client
+      - "8222:8222"  # NATS monitoring
+    volumes:
+      - nats-data:/data
+    networks:
+      - mcp-network
+
+volumes:
+  nats-data:
+
+networks:
+  mcp-network:
+    driver: bridge

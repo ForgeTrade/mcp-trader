@@ -1,0 +1,538 @@
+# Data Model: Binance Provider Integration
+
+**Feature**: 002-binance-provider-integration
+**Date**: 2025-10-18
+**Purpose**: Entity definitions and relationships for Binance provider integration
+
+## Core Entities
+
+### 1. Provider Capabilities
+
+**Purpose**: Metadata describing all tools, resources, and prompts exposed by the Binance provider
+
+**Attributes**:
+- `tools`: Collection of Tool definitions (16 total)
+- `resources`: Collection of Resource definitions (4 total)
+- `prompts`: Collection of Prompt template definitions (2 total)
+- `provider_version`: Semantic version string (e.g., "0.1.0")
+
+**Lifecycle**: Static - determined at compile time, returned by ListCapabilities RPC
+
+**Relationships**:
+- Contains 1:N relationship with Tool
+- Contains 1:N relationship with Resource
+- Contains 1:N relationship with Prompt
+
+**Validation Rules**:
+- Must contain at least 1 tool
+- Version must follow semantic versioning (MAJOR.MINOR.PATCH)
+
+---
+
+### 2. Tool Definition
+
+**Purpose**: Metadata for a single callable tool (market data query, order execution, etc.)
+
+**Attributes**:
+- `name`: Unique identifier (e.g., "get_ticker", "place_order")
+- `description`: Human-readable purpose of the tool
+- `input_schema`: JSON Schema Draft 2020-12 for parameter validation (embedded as JSON bytes)
+- `output_schema`: Optional JSON Schema for result validation (typically null)
+
+**Lifecycle**: Static - defined at compile time, immutable during runtime
+
+**Relationships**:
+- Belongs to Provider Capabilities (N:1)
+- References 1 JSON Schema for input validation
+
+**Validation Rules**:
+- Name must be non-empty and unique within provider
+- Description must be non-empty
+- Input schema must be valid JSON Schema Draft 2020-12
+
+**Instances** (16 total):
+1. `get_server_time` - Server time synchronization
+2. `get_ticker` - 24-hour ticker statistics
+3. `get_order_book` - Market depth (bids/asks)
+4. `get_recent_trades` - Recent public trades
+5. `get_klines` - OHLCV candlestick data
+6. `get_average_price` - Current average price
+7. `get_account_info` - Account balances and permissions
+8. `get_account_trades` - Personal trade history
+9. `place_order` - Create BUY/SELL order
+10. `get_order` - Query order status
+11. `cancel_order` - Cancel active order
+12. `get_open_orders` - List active orders
+13. `get_all_orders` - Complete order history
+14. `get_orderbook_metrics` - L1 order book metrics (optional feature)
+15. `get_orderbook_depth` - L2 order book depth (optional feature)
+16. `get_orderbook_health` - Service health status (optional feature)
+
+---
+
+### 3. Resource Definition
+
+**Purpose**: Metadata for URI-addressable data endpoints
+
+**Attributes**:
+- `uri_scheme`: URI scheme identifier (always "binance" for this provider)
+- `description`: Human-readable description of resource content
+- `mime_type`: Content type (always "text/markdown" for Binance provider)
+
+**Lifecycle**: Static - defined at compile time
+
+**Relationships**:
+- Belongs to Provider Capabilities (N:1)
+
+**Validation Rules**:
+- URI scheme must be non-empty
+- Mime type must be valid MIME format
+
+**Instances** (4 total):
+1. `binance://market/{symbol}` - Market data for trading symbol (e.g., btcusdt)
+2. `binance://account/balances` - Account balances table (requires authentication)
+3. `binance://orders/open` - Open orders table (requires authentication)
+4. `binance://account/trades` - Trade history (requires authentication)
+
+**Resource URI Structure**:
+```
+binance://<category>/<identifier>
+
+Examples:
+- binance://market/btcusdt      → Bitcoin market data
+- binance://market/ethusdt      → Ethereum market data
+- binance://account/balances    → Account balances
+- binance://orders/open         → Open orders
+```
+
+---
+
+### 4. Prompt Template
+
+**Purpose**: Parameterized templates for generating AI prompts
+
+**Attributes**:
+- `name`: Unique identifier (e.g., "trading_analysis")
+- `description`: Human-readable purpose
+- `args_schema`: JSON Schema for prompt parameters
+
+**Lifecycle**: Static - defined at compile time
+
+**Relationships**:
+- Belongs to Provider Capabilities (N:1)
+- Generates 1:N Prompt Messages when invoked
+
+**Validation Rules**:
+- Name must be non-empty and unique
+- Args schema must be valid JSON Schema
+
+**Instances** (2 total):
+1. **trading_analysis**
+   - Parameters: `symbol` (required), `strategy` (optional), `risk_tolerance` (optional)
+   - Output: Structured market analysis with trading recommendations
+
+2. **portfolio_risk**
+   - Parameters: None (uses account data from API)
+   - Output: Portfolio risk assessment and diversification recommendations
+
+---
+
+### 5. Prompt Message
+
+**Purpose**: Individual message in a prompt response (role + content format)
+
+**Attributes**:
+- `role`: Message role ("user", "assistant", "system")
+- `content`: Message text with parameters substituted
+
+**Lifecycle**: Generated on-demand when GetPrompt RPC called
+
+**Relationships**:
+- Belongs to Prompt Response (N:1)
+- Generated by Prompt Template (N:1)
+
+**Validation Rules**:
+- Role must be one of: "user", "assistant", "system"
+- Content must be non-empty
+
+**Example**:
+```json
+{
+  "role": "user",
+  "content": "Analyze the BTCUSDT market for swing trading with moderate risk tolerance. Provide entry/exit recommendations based on current market conditions."
+}
+```
+
+---
+
+### 6. Trading Symbol
+
+**Purpose**: Cryptocurrency trading pair identifier used across tools
+
+**Attributes**:
+- `symbol`: Uppercase string (e.g., "BTCUSDT", "ETHUSDT")
+
+**Lifecycle**: Ephemeral - passed as parameter, not persisted
+
+**Relationships**:
+- Used as parameter in 13 of 16 tools
+- References Binance API trading pairs (external system)
+
+**Validation Rules**:
+- Must be uppercase alphanumeric
+- Must be valid Binance trading pair (validated by API)
+- Typically 6-10 characters (baseAsset + quoteAsset)
+
+**Common Examples**:
+- BTCUSDT - Bitcoin/Tether
+- ETHUSDT - Ethereum/Tether
+- BNBUSDT - Binance Coin/Tether
+- SOLUSDT - Solana/Tether
+
+---
+
+### 7. API Credentials
+
+**Purpose**: Binance API authentication credentials for account/trading operations
+
+**Attributes**:
+- `api_key`: Public API key (hex string, 64 characters)
+- `api_secret`: Private API secret (hex string, 64 characters, NEVER logged)
+
+**Lifecycle**: Loaded from environment variables at provider startup, immutable during runtime
+
+**Relationships**:
+- Required by 10 of 16 tools (all account/trading tools)
+- Not required for public market data tools
+
+**Validation Rules**:
+- API key must be 64-character hex string
+- API secret must be 64-character hex string
+- Both must be present for authenticated endpoints
+
+**Security Constraints**:
+- API secret NEVER logged or included in error messages
+- API secret NEVER transmitted (used only for HMAC-SHA256 signing)
+- Credentials loaded from environment variables only (not config files)
+
+**Environment Variables**:
+```bash
+BINANCE_API_KEY="abc123..."       # Public key
+BINANCE_API_SECRET="xyz789..."    # Private secret (masked in logs)
+BINANCE_BASE_URL="https://testnet.binance.vision"  # Optional override
+```
+
+---
+
+### 8. Order
+
+**Purpose**: Trading order entity with lifecycle management
+
+**Attributes**:
+- `order_id`: Unique order identifier (integer, assigned by Binance)
+- `symbol`: Trading pair (e.g., "BTCUSDT")
+- `side`: Order side ("BUY" or "SELL")
+- `type`: Order type ("LIMIT" or "MARKET")
+- `price`: Limit price (decimal, null for MARKET orders)
+- `quantity`: Order quantity in base asset (decimal)
+- `status`: Current order status (see states below)
+- `filled_quantity`: Amount filled (decimal, 0.0 to quantity)
+- `created_at`: Timestamp of order creation (milliseconds since epoch)
+
+**Lifecycle**: Created → Active → Filled/Canceled/Expired
+
+**State Transitions**:
+```
+NEW → PARTIALLY_FILLED → FILLED
+NEW → CANCELED
+NEW → EXPIRED
+PARTIALLY_FILLED → FILLED
+PARTIALLY_FILLED → CANCELED
+```
+
+**Relationships**:
+- Belongs to Trading Symbol (N:1)
+- Created via `place_order` tool
+- Queried via `get_order`, `get_open_orders`, `get_all_orders` tools
+- Canceled via `cancel_order` tool
+
+**Validation Rules**:
+- Order ID must be positive integer
+- Side must be "BUY" or "SELL"
+- Type must be "LIMIT" or "MARKET"
+- Price required for LIMIT orders, must be > 0
+- Quantity must be > 0
+- Filled quantity must be 0.0 ≤ filled ≤ quantity
+
+**Example**:
+```json
+{
+  "order_id": 123456789,
+  "symbol": "BTCUSDT",
+  "side": "BUY",
+  "type": "LIMIT",
+  "price": "50000.00",
+  "quantity": "0.01",
+  "status": "NEW",
+  "filled_quantity": "0.00",
+  "created_at": 1697750400000
+}
+```
+
+---
+
+### 9. Order Book
+
+**Purpose**: Real-time market depth data with bid/ask levels
+
+**Attributes**:
+- `symbol`: Trading pair
+- `bids`: Array of [price, quantity] tuples (sorted high to low)
+- `asks`: Array of [price, quantity] tuples (sorted low to high)
+- `last_update_id`: Sequence number for update tracking
+- `timestamp`: Last update time (milliseconds since epoch)
+
+**Lifecycle**: Ephemeral - constructed from Binance API response or WebSocket updates
+
+**Relationships**:
+- Belongs to Trading Symbol (N:1)
+- Updated via REST API (`get_order_book` tool) or WebSocket stream (orderbook feature)
+- Analyzed by `get_orderbook_metrics` and `get_orderbook_depth` tools
+
+**Validation Rules**:
+- Bids must be sorted descending by price
+- Asks must be sorted ascending by price
+- All prices and quantities must be > 0
+- Bids[0].price < Asks[0].price (no crossed market)
+
+**Depth Levels**:
+- L1 (Top of Book): Best bid, best ask, spread
+- L2 (Depth): 20 or 100 levels per side
+- L3 (Full Depth): Not supported by Binance API
+
+**Metrics** (computed from order book data):
+- **Spread**: (best_ask - best_bid) in basis points
+- **Mid-price**: (best_bid + best_ask) / 2
+- **Microprice**: Volume-weighted fair price
+- **Bid/Ask Imbalance**: bid_volume / (bid_volume + ask_volume)
+- **Walls**: Large orders significantly above/below market
+
+**Example** (simplified):
+```json
+{
+  "symbol": "BTCUSDT",
+  "bids": [
+    ["50000.00", "1.5"],
+    ["49999.00", "2.3"],
+    ["49998.00", "0.8"]
+  ],
+  "asks": [
+    ["50001.00", "1.2"],
+    ["50002.00", "3.1"],
+    ["50003.00", "0.5"]
+  ],
+  "last_update_id": 987654321,
+  "timestamp": 1697750400123
+}
+```
+
+---
+
+### 10. Candlestick (OHLCV)
+
+**Purpose**: Historical price data for technical analysis
+
+**Attributes**:
+- `open_time`: Candle start time (milliseconds since epoch)
+- `close_time`: Candle end time (milliseconds since epoch)
+- `open`: Opening price (decimal)
+- `high`: Highest price during interval (decimal)
+- `low`: Lowest price during interval (decimal)
+- `close`: Closing price (decimal)
+- `volume`: Trading volume in base asset (decimal)
+- `quote_volume`: Trading volume in quote asset (decimal)
+- `trades`: Number of trades during interval (integer)
+
+**Lifecycle**: Ephemeral - constructed from Binance API response
+
+**Relationships**:
+- Belongs to Trading Symbol (N:1)
+- Queried via `get_klines` tool with interval parameter
+
+**Validation Rules**:
+- Open time < Close time
+- Low ≤ Open, Close, High
+- High ≥ Open, Close, Low
+- Volume, quote_volume, trades must be ≥ 0
+
+**Intervals Supported** (via `interval` parameter):
+- 1m, 3m, 5m, 15m, 30m (minutes)
+- 1h, 2h, 4h, 6h, 8h, 12h (hours)
+- 1d, 3d (days)
+- 1w (week)
+- 1M (month)
+
+**Example**:
+```json
+{
+  "open_time": 1697749200000,
+  "close_time": 1697749259999,
+  "open": "50000.00",
+  "high": "50100.00",
+  "low": "49950.00",
+  "close": "50050.00",
+  "volume": "12.345",
+  "quote_volume": "618750.00",
+  "trades": 234
+}
+```
+
+---
+
+## Entity Relationships Diagram
+
+```
+Provider Capabilities (1)
+    ├── contains ──> Tool (16)
+    │                  └── references ──> JSON Schema
+    ├── contains ──> Resource (4)
+    │                  └── addresses ──> Trading Symbol
+    └── contains ──> Prompt Template (2)
+                       └── generates ──> Prompt Message (1:N)
+
+API Credentials (1)
+    └── required by ──> Tool (10 of 16)
+
+Trading Symbol (ephemeral)
+    ├── used by ──> Tool (13 of 16)
+    ├── referenced by ──> Order (N:1)
+    ├── referenced by ──> Order Book (N:1)
+    └── referenced by ──> Candlestick (N:1)
+
+Order (managed by Binance API)
+    ├── belongs to ──> Trading Symbol
+    ├── created via ──> place_order tool
+    ├── queried via ──> get_order, get_open_orders, get_all_orders tools
+    └── canceled via ──> cancel_order tool
+
+Order Book (ephemeral or cached)
+    ├── belongs to ──> Trading Symbol
+    ├── fetched via ──> get_order_book tool (REST)
+    ├── updated via ──> WebSocket stream (optional)
+    └── analyzed by ──> get_orderbook_metrics, get_orderbook_depth tools
+```
+
+---
+
+## Data Flow Patterns
+
+### 1. Tool Invocation Flow
+
+```
+Gateway (Python)
+    └──> gRPC InvokeRequest
+           └──> Binance Provider (Rust)
+                  └──> Tool Router
+                         └──> MCP Tool Handler
+                                └──> Binance API Client (HTTP)
+                                       └──> Binance REST API
+                                              └──> JSON Response
+                                                     └──> MCP Tool Result
+                                                            └──> gRPC InvokeResponse
+                                                                   └──> Gateway
+```
+
+### 2. Capability Discovery Flow
+
+```
+Gateway startup
+    └──> gRPC ListCapabilities
+           └──> Binance Provider
+                  └──> Static Capabilities (compiled)
+                         ├──> Tool Definitions (16) with embedded JSON schemas
+                         ├──> Resource Definitions (4)
+                         └──> Prompt Definitions (2)
+                                └──> gRPC Capabilities Response
+                                       └──> Gateway cache
+```
+
+### 3. Resource Query Flow
+
+```
+Gateway
+    └──> gRPC ReadResource (uri="binance://market/btcusdt")
+           └──> Binance Provider
+                  └──> URI Parser
+                         └──> Resource Handler
+                                └──> Binance API (multiple endpoints)
+                                       └──> Markdown Formatter
+                                              └──> gRPC ResourceResponse
+                                                     └──> Gateway
+```
+
+### 4. Order Book WebSocket Flow (Optional)
+
+```
+Provider startup with orderbook feature
+    └──> OrderBookManager
+           └──> WebSocket connections (1 per symbol, max 20)
+                  └──> Binance WebSocket API (depth stream)
+                         └──> Depth updates (100ms intervals)
+                                └──> Local cache (Arc<RwLock<OrderBook>>)
+                                       └──> get_orderbook_metrics/depth tools
+                                              └──> gRPC InvokeResponse
+```
+
+---
+
+## Persistence and Caching
+
+**No Persistent Storage**: The Binance provider is completely stateless. All data is sourced on-demand from Binance API.
+
+**Ephemeral Caching** (orderbook feature only):
+- **What**: Order book L2 depth (bid/ask levels)
+- **Why**: Real-time updates require WebSocket subscriptions with local cache
+- **How**: Arc<RwLock<HashMap<Symbol, OrderBook>>> in memory
+- **TTL**: Cache valid until WebSocket disconnect (auto-refresh via stream)
+- **Size**: ~20 symbols × ~200 levels × 16 bytes ≈ 64 KB total
+- **Eviction**: LRU when symbol limit (20) exceeded
+
+**No Gateway-Side Caching**: Gateway does not cache provider responses. All caching (if any) happens within the provider.
+
+---
+
+## JSON Schema References
+
+All tool parameter schemas are embedded in the provider binary at compile time. Schemas are generated from Rust types using the `schemars` crate.
+
+**Schema Location** (conceptual - embedded in binary):
+```
+providers/binance-rs/schemas/
+├── get_ticker.input.json
+├── get_order_book.input.json
+├── get_klines.input.json
+├── place_order.input.json
+└── ... (16 total)
+```
+
+**Schema Format**: JSON Schema Draft 2020-12
+
+**Example Schema** (get_ticker tool):
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "symbol": {
+      "type": "string",
+      "description": "Trading symbol (e.g., BTCUSDT)",
+      "pattern": "^[A-Z0-9]{6,10}$"
+    }
+  },
+  "required": ["symbol"]
+}
+```
+
+---
+
+**Summary**: This data model defines 10 core entities with clear lifecycle management, validation rules, and relationship patterns. All entities follow the constitution principles of simplicity (simple structs), library-first (leverage Binance API types), and minimal OOP (no inheritance hierarchies).

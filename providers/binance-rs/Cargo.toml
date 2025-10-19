@@ -1,0 +1,63 @@
+[package]
+name = "binance-provider"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+
+[[bin]]
+name = "binance-provider"
+path = "src/main.rs"
+
+[dependencies]
+# gRPC and protobuf
+tonic = "0.9"
+prost = "0.11"
+tokio = { version = "1.48", features = ["rt-multi-thread", "macros", "signal"] }
+futures = "0.3"
+futures-util = "0.3"
+
+# MCP SDK (preserved from mcp-binance-rs)
+rmcp = "0.8.1"
+
+# HTTP client for Binance API
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# JSON Schema generation
+schemars = "1.0"
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Crypto (for Binance API signing)
+sha2 = "0.10"
+hmac = "0.12"
+hex = "0.4"
+
+# Time
+chrono = "0.4"
+
+# Optional features
+tokio-tungstenite = { version = "0.28", optional = true }
+rust_decimal = { version = "1.37", optional = true }
+governor = { version = "0.6", optional = true }
+
+[build-dependencies]
+tonic-build = "0.9"
+
+[features]
+default = ["orderbook", "http-api", "websocket"]
+orderbook = ["tokio-tungstenite", "rust_decimal", "governor"]
+websocket = ["tokio-tungstenite"]
+http-api = []
+
+[dev-dependencies]
+tempfile = "3.8"

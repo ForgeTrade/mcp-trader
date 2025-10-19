@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mcp-gateway.example.com/schemas/echo.input.json",
+  "title": "Echo Tool Input",
+  "description": "Input schema for echo.v1 tool that returns the input message unchanged",
+  "type": "object",
+  "properties": {
+    "message": {
+      "type": "string",
+      "description": "Message to echo back",
+      "minLength": 1,
+      "maxLength": 10000
+    }
+  },
+  "required": ["message"],
+  "additionalProperties": false
+}

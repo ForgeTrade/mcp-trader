@@ -1,0 +1,26 @@
+providers:
+  - name: hello-go
+    type: grpc
+    address: localhost:50051
+    enabled: true
+    metadata:
+      version: "1.0.0"
+      environment: development
+
+  - name: hello-rs
+    type: grpc
+    address: localhost:50052
+    enabled: true
+    metadata:
+      version: "1.0.0"
+      environment: development
+
+  - name: binance-rs
+    type: grpc
+    address: localhost:50053
+    enabled: true
+    metadata:
+      description: "Binance cryptocurrency trading provider"
+      version: "0.1.0"
+      features: ["orderbook"]
+      environment: development
