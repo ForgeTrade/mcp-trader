@@ -9,13 +9,28 @@ This system implements a distributed MCP architecture where a Python gateway orc
 ## Architecture
 
 ```
-AI Client (Claude, etc.)
-    ↓
-MCP Gateway (Python)
-    ├→ hello-go (Go provider) - Demo tools
-    ├→ hello-rs (Rust provider) - Demo tools
-    └→ binance-rs (Rust provider) - Cryptocurrency trading
+AI Clients
+    ├→ Claude Code (STDIO transport)
+    │       ↓
+    │   MCP Gateway (Python)
+    │       ├→ hello-go (Go provider) - Demo tools
+    │       ├→ hello-rs (Rust provider) - Demo tools
+    │       └→ binance-rs (Rust provider) - Cryptocurrency trading
+    │
+    └→ ChatGPT (SSE transport) 🆕
+            ↓
+        SSE Gateway (Python)
+            └→ binance-rs (Rust provider) - All 21 tools
 ```
+
+### Production Deployment
+
+**ChatGPT MCP Server** (SSE transport):
+- **URL**: https://mcp-gateway.thevibe.trading/sse/
+- **Status**: ✅ Live in production
+- **Features**: Exposes all 21 Binance tools directly to ChatGPT
+- **Transport**: Server-Sent Events (SSE) - required for ChatGPT integration
+- **Documentation**: See [ChatGPT Integration Guide](providers/binance-rs/CHATGPT_INTEGRATION.md)
 
 ## Providers
 
@@ -34,14 +49,20 @@ MCP Gateway (Python)
 ### binance-rs ⭐ **Production Ready**
 - **Language**: Rust
 - **Port**: 50053
-- **Status**: ✅ **Fully Implemented** (148 tasks complete)
+- **Status**: ✅ **Fully Implemented** (All features complete)
 
 **Capabilities**:
-- **16 Tools**: Cryptocurrency trading & analysis
+- **21 Tools**: Cryptocurrency trading & advanced analytics
   - 🔸 Market data (6 tools): Real-time ticker, order book, trades, klines, exchange info
   - 🔸 Account management (2 tools): Live balances, trade history
   - 🔸 Order execution (5 tools): Place, cancel, query orders
   - 🔸 OrderBook analysis (3 tools): WebSocket-powered L1/L2 metrics, health monitoring
+  - 🔸 **Advanced Analytics (5 tools)**: 🆕
+    - `get_recent_trades` - Recent trades with aggregation
+    - `get_volume_profile` - Volume distribution analysis
+    - `detect_market_anomalies` - Unusual market activity detection
+    - `get_microstructure_health` - Spread, slippage, fragmentation metrics
+    - `get_liquidity_vacuums` - Price level gap detection
 - **4 Resources**: Markdown-formatted data snapshots (with **LIVE data**)
   - `binance://market/{SYMBOL}` - Real-time market summary
   - `binance://account/balances` - Current account balances
@@ -90,6 +111,35 @@ claude mcp add --transport stdio mcp-gateway -- \
 # Start your session
 claude  # MCP gateway starts automatically
 ```
+
+### Using with ChatGPT 🤖 🆕
+
+The MCP gateway is now available for ChatGPT via SSE transport. All 21 Binance tools are accessible!
+
+**Setup for ChatGPT**:
+1. Enable **Developer Mode** in ChatGPT (Plus/Pro required)
+2. Go to **Settings** → **MCP Servers** → **Add Server**
+3. Configure the SSE endpoint:
+   - **Server URL**: `https://mcp-gateway.thevibe.trading/sse/`
+   - **Transport**: SSE (Server-Sent Events)
+
+**Example Usage**:
+```
+You: "What's the current BTC price and order book health?"
+ChatGPT: [Uses binance_get_ticker and binance_orderbook_l1 tools]
+Response: Bitcoin is at $106,841.00 (+0.43%). Order book spread: 0.01%,
+          bid-ask imbalance: 58% bid-heavy, microprice: $106,840.50
+
+You: "Analyze volume profile for ETHUSDT"
+ChatGPT: [Uses binance_get_volume_profile tool]
+Response: [Detailed volume distribution analysis with POC, VAH, VAL]
+
+You: "Detect any market anomalies for BTCUSDT"
+ChatGPT: [Uses binance_detect_market_anomalies tool]
+Response: [Analysis of unusual order book patterns, volume spikes, etc.]
+```
+
+See [CHATGPT_INTEGRATION.md](providers/binance-rs/CHATGPT_INTEGRATION.md) for detailed setup guide.
 
 ### Manual Setup
 
@@ -191,14 +241,24 @@ All providers implement `/pkg/proto/provider.proto`:
 mcp-trader/
 ├── mcp-gateway/          # Python MCP gateway
 │   ├── mcp_gateway/
-│   │   ├── main.py      # FastMCP server
+│   │   ├── main.py      # FastMCP server (STDIO transport)
+│   │   ├── sse_server.py # SSE server for ChatGPT 🆕
 │   │   ├── adapters/    # gRPC clients
+│   │   ├── tools/       # Search & fetch tools 🆕
 │   │   └── validation.py
 │   └── providers.yaml   # Provider configuration
 ├── providers/
 │   ├── hello-go/        # Go demo provider
 │   ├── hello-rs/        # Rust demo provider
-│   └── binance-rs/      # Binance trading provider
+│   └── binance-rs/      # Binance trading provider (21 tools)
+│       └── src/
+│           └── orderbook/
+│               └── analytics/  # Advanced analytics module 🆕
+├── infra/               # Production deployment 🆕
+│   ├── deploy-chatgpt.sh        # ChatGPT SSE deployment script
+│   ├── binance-provider.service # Systemd service
+│   ├── mcp-gateway-sse.service  # SSE gateway service
+│   └── nginx-mcp-gateway.conf   # NGINX reverse proxy
 ├── pkg/
 │   ├── proto/           # Shared protobuf contracts
 │   └── schemas/         # JSON schemas
@@ -207,7 +267,16 @@ mcp-trader/
 
 ## Documentation
 
-- [Binance Provider Guide](providers/binance-rs/README.md)
+### Binance Provider
+- [Binance Provider Guide](providers/binance-rs/README.md) - Complete provider documentation
+- [ChatGPT Integration Guide](providers/binance-rs/CHATGPT_INTEGRATION.md) - SSE setup for ChatGPT 🆕
+- [Integration Testing](providers/binance-rs/INTEGRATION_TESTS_COMPLETE.md) - Test results
+
+### Gateway & Deployment
+- [Manual Testing Guide](mcp-gateway/MANUAL_TESTING_GUIDE.md) - Testing SSE endpoints 🆕
+- [Deploy Script](infra/deploy-chatgpt.sh) - Production deployment automation 🆕
+
+### Specifications
 - [Specification](specs/002-binance-provider-integration/spec.md)
 - [Implementation Plan](specs/002-binance-provider-integration/plan.md)
 - [Task Breakdown](specs/002-binance-provider-integration/tasks.md)
