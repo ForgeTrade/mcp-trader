@@ -28,6 +28,9 @@ pub mod rate_limiter;
 #[cfg(feature = "orderbook")]
 pub mod tools;
 
+#[cfg(feature = "orderbook_analytics")]
+pub mod analytics;
+
 #[cfg(feature = "orderbook")]
 pub use types::{
     OrderBook, OrderBookDepth, OrderBookHealth, OrderBookMetrics, SlippageEstimate,

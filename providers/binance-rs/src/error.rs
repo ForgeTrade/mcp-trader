@@ -32,6 +32,9 @@ pub enum ProviderError {
     #[error("Internal error: {0}")]
     Internal(String),
 
+    #[error("Initialization error: {0}")]
+    Initialization(String),
+
     #[error("MCP error: {0}")]
     Mcp(#[from] McpError),
 }

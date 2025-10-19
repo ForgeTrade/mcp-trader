@@ -4,6 +4,9 @@ pub mod error;
 pub mod grpc;
 pub mod pb;
 
+#[cfg(feature = "http_transport")]
+pub mod transport; // MCP transport layer (HTTP)
+
 // Binance API integration modules
 pub mod binance; // Binance API client
 pub mod config; // Configuration management

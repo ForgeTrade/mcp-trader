@@ -1,0 +1,50 @@
+# Rust
+target/
+debug/
+release/
+*.rs.bk
+*.rlib
+*.prof*
+Cargo.lock
+
+# RocksDB data (from analytics feature)
+data/
+*.sst
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+*.tmp
+
+# Logs
+*.log
+
+# Test coverage
+coverage/
+*.profdata
+*.profraw
+
+# Python (for MCP gateway if present)
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Temporary files
+*.bak
+*.swp
+*.swo

@@ -1,0 +1,19 @@
+[Unit]
+Description=Binance Provider gRPC Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/mcp-trader/providers/binance-rs
+Environment="RUST_LOG=info"
+Environment="BINANCE_API_KEY="
+Environment="BINANCE_SECRET_KEY="
+ExecStart=/opt/mcp-trader/providers/binance-rs/target/release/binance-provider --grpc --port 50053
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

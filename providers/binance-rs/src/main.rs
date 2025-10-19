@@ -24,6 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match mode.as_str() {
         "grpc" => run_grpc_server(port).await?,
+        "http" => run_http_server(port).await?,
         "stdio" => run_stdio_server().await?,
         _ => {
             eprintln!("Invalid mode: {}", mode);
@@ -38,16 +39,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// Parse command-line arguments
 fn parse_args(args: &[String]) -> (String, u16) {
     let mut mode = "grpc".to_string();
-    let mut port = 50053u16;
+    let mut port = 0u16; // 0 means use default based on mode
+    let mut port_set_explicitly = false;
 
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
+            "--mode" => {
+                if i + 1 < args.len() {
+                    mode = args[i + 1].clone();
+                    i += 1;
+                }
+            }
             "--grpc" => mode = "grpc".to_string(),
+            "--http" => mode = "http".to_string(),
             "--stdio" => mode = "stdio".to_string(),
             "--port" => {
                 if i + 1 < args.len() {
-                    port = args[i + 1].parse().unwrap_or(50053);
+                    port = args[i + 1].parse().unwrap_or(0);
+                    port_set_explicitly = true;
                     i += 1;
                 }
             }
@@ -64,6 +74,15 @@ fn parse_args(args: &[String]) -> (String, u16) {
         i += 1;
     }
 
+    // Set default port based on mode if not explicitly set
+    if !port_set_explicitly || port == 0 {
+        port = match mode.as_str() {
+            "http" => 3000,
+            "grpc" => 50053,
+            _ => 50053,
+        };
+    }
+
     (mode, port)
 }
 
@@ -75,23 +94,32 @@ fn print_usage() {
     println!("    binance-provider [OPTIONS]");
     println!();
     println!("OPTIONS:");
-    println!("    --grpc              Run in gRPC mode (default)");
-    println!("    --stdio             Run in stdio MCP mode");
-    println!("    --port <PORT>       gRPC port to listen on (default: 50053)");
+    println!("    --mode <MODE>       Transport mode: grpc, http, or stdio (default: grpc)");
+    println!("    --grpc              Run in gRPC mode (shortcut for --mode grpc)");
+    println!("    --http              Run in HTTP mode (shortcut for --mode http)");
+    println!("    --stdio             Run in stdio MCP mode (shortcut for --mode stdio)");
+    println!("    --port <PORT>       Port to listen on (default: 50053 for gRPC, 3000 for HTTP)");
     println!("    --help, -h          Print this help message");
     println!();
     println!("ENVIRONMENT VARIABLES:");
-    println!("    BINANCE_API_KEY     Binance API key (required for authenticated operations)");
-    println!("    BINANCE_API_SECRET  Binance API secret (required for authenticated operations)");
-    println!("    BINANCE_BASE_URL    Binance API base URL (default: https://api.binance.com)");
-    println!("    RUST_LOG            Logging level (default: info)");
+    println!("    BINANCE_API_KEY       Binance API key (required for authenticated operations)");
+    println!("    BINANCE_API_SECRET    Binance API secret (required for authenticated operations)");
+    println!("    BINANCE_BASE_URL      Binance API base URL (default: https://api.binance.com)");
+    println!("    ANALYTICS_DATA_PATH   Analytics storage path (default: ./data/analytics)");
+    println!("    RUST_LOG              Logging level (default: info)");
     println!();
     println!("EXAMPLES:");
     println!("    # Start gRPC server on default port (50053)");
     println!("    binance-provider --grpc");
     println!();
-    println!("    # Start gRPC server on custom port");
-    println!("    binance-provider --grpc --port 8080");
+    println!("    # Start HTTP server on default port (3000)");
+    println!("    binance-provider --http");
+    println!();
+    println!("    # Start HTTP server on custom port");
+    println!("    binance-provider --mode http --port 8080");
+    println!();
+    println!("    # Start gRPC server with analytics features");
+    println!("    cargo run --features orderbook,orderbook_analytics -- --grpc --port 50053");
     println!();
     println!("    # Start in stdio mode");
     println!("    binance-provider --stdio");
@@ -106,7 +134,27 @@ async fn run_grpc_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
 
     tracing::info!("Starting gRPC server on {}", addr);
     tracing::info!("Provider capabilities:");
-    tracing::info!("  - 16 tools (market data, account, orders, orderbook)");
+
+    #[cfg(feature = "orderbook_analytics")]
+    {
+        tracing::info!("  - 21 tools (16 base + 5 analytics):");
+        tracing::info!("    * Market data: ticker, orderbook, trades, klines, exchange_info, avg_price");
+        tracing::info!("    * Account: get_account, get_my_trades");
+        tracing::info!("    * Orders: place, cancel, get, get_open, get_all");
+        tracing::info!("    * OrderBook: L1 metrics, L2 depth, health");
+        tracing::info!("    * Analytics: order_flow, volume_profile, anomalies, health, liquidity_vacuums");
+    }
+
+    #[cfg(all(feature = "orderbook", not(feature = "orderbook_analytics")))]
+    {
+        tracing::info!("  - 16 tools (market data, account, orders, orderbook L1/L2)");
+    }
+
+    #[cfg(not(feature = "orderbook"))]
+    {
+        tracing::info!("  - 13 tools (market data, account, orders)");
+    }
+
     tracing::info!("  - 4 resources (market, balances, trades, orders)");
     tracing::info!("  - 2 prompts (trading-analysis, portfolio-risk)");
 
@@ -151,6 +199,53 @@ async fn run_grpc_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
 
     tracing::info!("Server stopped");
     Ok(())
+}
+
+/// Run the provider in HTTP mode
+#[cfg(feature = "http_transport")]
+async fn run_http_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
+    tracing::info!("Initializing Binance Provider (HTTP mode)...");
+
+    #[cfg(all(feature = "orderbook", feature = "orderbook_analytics"))]
+    {
+        let provider = BinanceProviderServer::new()?;
+        binance_provider::transport::http::start_http_server(
+            port,
+            provider.binance_client,
+            Some(provider.orderbook_manager),
+            Some(provider.analytics_storage),
+        )
+        .await?;
+    }
+
+    #[cfg(all(feature = "orderbook", not(feature = "orderbook_analytics")))]
+    {
+        let provider = BinanceProviderServer::new()?;
+        binance_provider::transport::http::start_http_server(
+            port,
+            provider.binance_client,
+            Some(provider.orderbook_manager),
+        )
+        .await?;
+    }
+
+    #[cfg(not(feature = "orderbook"))]
+    {
+        let provider = BinanceProviderServer::new()?;
+        binance_provider::transport::http::start_http_server(
+            port,
+            provider.binance_client,
+        )
+        .await?;
+    }
+
+    Ok(())
+}
+
+#[cfg(not(feature = "http_transport"))]
+async fn run_http_server(_port: u16) -> Result<(), Box<dyn std::error::Error>> {
+    eprintln!("HTTP transport not available. Build with --features http_transport");
+    std::process::exit(1);
 }
 
 /// Run the provider in stdio MCP mode

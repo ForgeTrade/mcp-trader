@@ -1,0 +1,103 @@
+{
+  "name": "binance.get_order_flow",
+  "description": "Calculate order flow dynamics (bid/ask pressure rates) over configurable time window (10-300 seconds) to identify optimal entry and exit points. Returns bid flow rate, ask flow rate, net flow, flow direction indicator (STRONG_BUY, MODERATE_BUY, NEUTRAL, MODERATE_SELL, STRONG_SELL), and cumulative delta.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "symbol": {
+        "type": "string",
+        "description": "Trading pair (e.g., BTCUSDT). Must be uppercase.",
+        "pattern": "^[A-Z]+$",
+        "examples": ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+      },
+      "window_duration_secs": {
+        "type": "integer",
+        "description": "Analysis time window in seconds. Defaults to 60. Range: 10-300 seconds (from clarifications).",
+        "minimum": 10,
+        "maximum": 300,
+        "default": 60
+      }
+    },
+    "required": ["symbol"]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "symbol": {
+        "type": "string",
+        "description": "Trading pair"
+      },
+      "time_window_start": {
+        "type": "string",
+        "format": "date-time",
+        "description": "Start of analysis window (ISO 8601 UTC)"
+      },
+      "time_window_end": {
+        "type": "string",
+        "format": "date-time",
+        "description": "End of analysis window (ISO 8601 UTC)"
+      },
+      "window_duration_secs": {
+        "type": "integer",
+        "description": "Duration in seconds"
+      },
+      "bid_flow_rate": {
+        "type": "number",
+        "description": "Bid orders per second",
+        "minimum": 0
+      },
+      "ask_flow_rate": {
+        "type": "number",
+        "description": "Ask orders per second",
+        "minimum": 0
+      },
+      "net_flow": {
+        "type": "number",
+        "description": "Net pressure (bid_flow_rate - ask_flow_rate)"
+      },
+      "flow_direction": {
+        "type": "string",
+        "enum": ["StrongBuy", "ModerateBuy", "Neutral", "ModerateSell", "StrongSell"],
+        "description": "Flow direction indicator based on bid/ask ratio thresholds"
+      },
+      "cumulative_delta": {
+        "type": "number",
+        "description": "Running sum of buy volume - sell volume over window"
+      },
+      "absorption_events": {
+        "type": "array",
+        "description": "Optional: Detected absorption events (large orders >5x median absorbing pressure)",
+        "items": {
+          "type": "object",
+          "properties": {
+            "event_id": {"type": "string", "format": "uuid"},
+            "price_level": {"type": "string"},
+            "absorbed_volume": {"type": "string"},
+            "refill_count": {"type": "integer"},
+            "suspected_entity": {"type": "string", "enum": ["MarketMaker", "Whale", "Unknown"]},
+            "direction": {"type": "string", "enum": ["Accumulation", "Distribution"]}
+          }
+        }
+      }
+    },
+    "required": ["symbol", "time_window_start", "time_window_end", "window_duration_secs", "bid_flow_rate", "ask_flow_rate", "net_flow", "flow_direction", "cumulative_delta"]
+  },
+  "errors": [
+    {
+      "code": "insufficient_historical_data",
+      "message": "Need {N} more snapshots for {duration}s window analysis"
+    },
+    {
+      "code": "websocket_disconnected",
+      "message": "Orderbook WebSocket stream unavailable"
+    },
+    {
+      "code": "storage_error",
+      "message": "RocksDB query failed: {details}"
+    },
+    {
+      "code": "storage_limit_exceeded",
+      "message": "1GB hard limit reached, oldest data must be purged"
+    }
+  ]
+}

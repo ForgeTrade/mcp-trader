@@ -1,0 +1,23 @@
+[Unit]
+Description=MCP Gateway SSE Server for ChatGPT Integration
+After=network.target binance-provider.service
+Requires=binance-provider.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/mcp-trader/mcp-gateway
+Environment="PATH=/root/.local/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="RUST_LOG=info"
+ExecStart=/root/.local/bin/uv run python -m mcp_gateway.sse_server
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

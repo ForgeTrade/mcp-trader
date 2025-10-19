@@ -1,0 +1,101 @@
+{
+  "name": "binance.detect_market_anomalies",
+  "description": "Detect market microstructure anomalies including quote stuffing (HFT manipulation), iceberg orders (hidden institutional orders), and flash crash precursors. Only reports anomalies with >=95% confidence (z-score > 1.96).",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "symbol": {
+        "type": "string",
+        "description": "Trading pair (e.g., BTCUSDT). Must be uppercase.",
+        "pattern": "^[A-Z]+$",
+        "examples": ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+      },
+      "window_duration_secs": {
+        "type": "integer",
+        "description": "Analysis time window in seconds. Defaults to 60.",
+        "minimum": 10,
+        "maximum": 300,
+        "default": 60
+      }
+    },
+    "required": ["symbol"]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "anomalies": {
+        "type": "array",
+        "description": "Detected anomalies (empty array if market is healthy)",
+        "items": {
+          "type": "object",
+          "properties": {
+            "anomaly_id": {"type": "string", "format": "uuid"},
+            "anomaly_type": {
+              "type": "string",
+              "enum": ["QuoteStuffing", "IcebergOrder", "FlashCrashRisk"],
+              "description": "Classification of detected anomaly"
+            },
+            "severity": {
+              "type": "string",
+              "enum": ["Low", "Medium", "High", "Critical"],
+              "description": "Risk level (QuoteStuffing: Medium 500-750 updates/s, High 750-1000, Critical >1000)"
+            },
+            "confidence": {
+              "type": "number",
+              "minimum": 0.95,
+              "maximum": 1.0,
+              "description": "Detection confidence (only >=95% reported, z-score > 1.96 for icebergs)"
+            },
+            "timestamp": {"type": "string", "format": "date-time"},
+            "affected_price_levels": {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "Impacted price levels (empty for flash crash)"
+            },
+            "description": {
+              "type": "string",
+              "description": "Human-readable explanation (<500 chars)"
+            },
+            "recommended_action": {
+              "type": "string",
+              "description": "Actionable guidance (<500 chars)"
+            },
+            "detection_details": {
+              "type": "object",
+              "description": "Type-specific metrics",
+              "properties": {
+                "update_rate": {"type": "number", "description": "For QuoteStuffing: updates/sec"},
+                "fill_rate": {"type": "number", "description": "For QuoteStuffing: % of updates resulting in trades"},
+                "refill_rate_zscore": {"type": "number", "description": "For IcebergOrder: z-score of refill rate"},
+                "refill_count": {"type": "integer", "description": "For IcebergOrder: times refilled"},
+                "liquidity_drain_pct": {"type": "number", "description": "For FlashCrashRisk: % depth lost"},
+                "spread_multiple": {"type": "number", "description": "For FlashCrashRisk: current / 24h avg"},
+                "cancellation_rate": {"type": "number", "description": "For FlashCrashRisk: % of updates that are cancels"}
+              }
+            }
+          },
+          "required": ["anomaly_id", "anomaly_type", "severity", "confidence", "timestamp", "description", "recommended_action"]
+        }
+      },
+      "analysis_window": {
+        "type": "object",
+        "properties": {
+          "start": {"type": "string", "format": "date-time"},
+          "end": {"type": "string", "format": "date-time"},
+          "duration_secs": {"type": "integer"}
+        }
+      }
+    },
+    "required": ["anomalies", "analysis_window"]
+  },
+  "errors": [
+    {
+      "code": "insufficient_historical_data",
+      "message": "Need baseline data for statistical analysis"
+    },
+    {
+      "code": "websocket_disconnected",
+      "message": "Orderbook or trade stream unavailable"
+    }
+  ]
+}

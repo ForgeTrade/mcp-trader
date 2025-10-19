@@ -26,6 +26,10 @@ pub async fn route_tool(
     orderbook_manager: Option<Arc<OrderBookManager>>,
     #[cfg(not(feature = "orderbook"))]
     _orderbook_manager: Option<()>,
+    #[cfg(feature = "orderbook_analytics")]
+    analytics_storage: Option<Arc<crate::orderbook::analytics::SnapshotStorage>>,
+    #[cfg(not(feature = "orderbook_analytics"))]
+    _analytics_storage: Option<()>,
     request: &InvokeRequest,
 ) -> Result<InvokeResponse> {
     tracing::debug!("Routing tool: {}", request.tool_name);
@@ -57,6 +61,18 @@ pub async fn route_tool(
         "binance.orderbook_l2" => handle_orderbook_l2(orderbook_manager.as_ref(), request).await?,
         #[cfg(feature = "orderbook")]
         "binance.orderbook_health" => handle_orderbook_health(orderbook_manager.as_ref(), request).await?,
+
+        // Advanced analytics tools (feature-gated)
+        #[cfg(feature = "orderbook_analytics")]
+        "binance.get_order_flow" => handle_get_order_flow(analytics_storage.as_ref(), request).await?,
+        #[cfg(feature = "orderbook_analytics")]
+        "binance.get_volume_profile" => handle_get_volume_profile(request).await?,
+        #[cfg(feature = "orderbook_analytics")]
+        "binance.detect_market_anomalies" => handle_detect_market_anomalies(analytics_storage.as_ref(), request).await?,
+        #[cfg(feature = "orderbook_analytics")]
+        "binance.get_microstructure_health" => handle_get_microstructure_health(analytics_storage.as_ref(), request).await?,
+        #[cfg(feature = "orderbook_analytics")]
+        "binance.get_liquidity_vacuums" => handle_get_liquidity_vacuums(analytics_storage.as_ref(), request).await?,
 
         // Unknown tool
         _ => return Err(ProviderError::ToolNotFound(request.tool_name.clone())),
@@ -479,6 +495,143 @@ async fn handle_orderbook_health(
 
     let result = serde_json::to_value(&health)?;
 
+    Ok(Json {
+        value: serde_json::to_string(&result)?.as_bytes().to_vec(),
+    })
+}
+
+// ========== Advanced Analytics Tool Handlers (Feature-gated) ==========
+
+#[cfg(feature = "orderbook_analytics")]
+async fn handle_get_order_flow(
+    storage: Option<&Arc<crate::orderbook::analytics::SnapshotStorage>>,
+    request: &InvokeRequest,
+) -> Result<Json> {
+    use crate::orderbook::analytics::tools::{get_order_flow, GetOrderFlowParams};
+
+    // Check if storage is available
+    let storage = storage
+        .ok_or_else(|| ProviderError::Validation("Analytics storage not initialized".to_string()))?;
+
+    // Parse parameters
+    let args = parse_json(&request.payload)?;
+    let params: GetOrderFlowParams = serde_json::from_value(args)
+        .map_err(|e| ProviderError::Validation(format!("Invalid parameters: {}", e)))?;
+
+    tracing::info!("Getting order flow analysis for symbol: {} (window: {}s)",
+        params.symbol, params.window_duration_secs);
+
+    // Call analytics tool
+    let snapshot = get_order_flow(storage.clone(), params)
+        .await
+        .map_err(|e| ProviderError::BinanceApi(e.to_string()))?;
+
+    let result = serde_json::to_value(&snapshot)?;
+
+    Ok(Json {
+        value: serde_json::to_string(&result)?.as_bytes().to_vec(),
+    })
+}
+
+#[cfg(feature = "orderbook_analytics")]
+async fn handle_get_volume_profile(
+    request: &InvokeRequest,
+) -> Result<Json> {
+    use crate::orderbook::analytics::tools::{get_volume_profile, GetVolumeProfileParams};
+
+    // Parse parameters
+    let args = parse_json(&request.payload)?;
+    let params: GetVolumeProfileParams = serde_json::from_value(args)
+        .map_err(|e| ProviderError::Validation(format!("Invalid parameters: {}", e)))?;
+
+    tracing::info!("Getting volume profile for symbol: {} (duration: {}h)",
+        params.symbol, params.duration_hours);
+
+    // TODO: In production, this would pull from a trade buffer/cache
+    // For now, return a placeholder error
+    let trades = Vec::new(); // This should come from a global trade buffer
+
+    // Call analytics tool
+    let profile = get_volume_profile(trades, params)
+        .await
+        .map_err(|e| ProviderError::BinanceApi(e.to_string()))?;
+
+    let result = serde_json::to_value(&profile)?;
+
+    Ok(Json {
+        value: serde_json::to_string(&result)?.as_bytes().to_vec(),
+    })
+}
+
+#[cfg(feature = "orderbook_analytics")]
+async fn handle_detect_market_anomalies(
+    storage: Option<&Arc<crate::orderbook::analytics::SnapshotStorage>>,
+    request: &InvokeRequest,
+) -> Result<Json> {
+    use crate::orderbook::analytics::tools::detect_market_anomalies;
+
+    let storage = storage
+        .ok_or_else(|| ProviderError::Validation("Analytics storage not initialized".to_string()))?;
+
+    let args = parse_json(&request.payload)?;
+    let symbol = args["symbol"]
+        .as_str()
+        .ok_or_else(|| ProviderError::Validation("Missing symbol".to_string()))?;
+
+    let anomalies = detect_market_anomalies(storage.clone(), symbol)
+        .await
+        .map_err(|e| ProviderError::BinanceApi(e.to_string()))?;
+
+    let result = serde_json::to_value(&anomalies)?;
+    Ok(Json {
+        value: serde_json::to_string(&result)?.as_bytes().to_vec(),
+    })
+}
+
+#[cfg(feature = "orderbook_analytics")]
+async fn handle_get_microstructure_health(
+    storage: Option<&Arc<crate::orderbook::analytics::SnapshotStorage>>,
+    request: &InvokeRequest,
+) -> Result<Json> {
+    use crate::orderbook::analytics::tools::get_microstructure_health;
+
+    let storage = storage
+        .ok_or_else(|| ProviderError::Validation("Analytics storage not initialized".to_string()))?;
+
+    let args = parse_json(&request.payload)?;
+    let symbol = args["symbol"]
+        .as_str()
+        .ok_or_else(|| ProviderError::Validation("Missing symbol".to_string()))?;
+
+    let health = get_microstructure_health(storage.clone(), symbol)
+        .await
+        .map_err(|e| ProviderError::BinanceApi(e.to_string()))?;
+
+    let result = serde_json::to_value(&health)?;
+    Ok(Json {
+        value: serde_json::to_string(&result)?.as_bytes().to_vec(),
+    })
+}
+
+#[cfg(feature = "orderbook_analytics")]
+async fn handle_get_liquidity_vacuums(
+    storage: Option<&Arc<crate::orderbook::analytics::SnapshotStorage>>,
+    request: &InvokeRequest,
+) -> Result<Json> {
+    use crate::orderbook::analytics::tools::{get_liquidity_vacuums, GetLiquidityVacuumsParams};
+
+    let storage = storage
+        .ok_or_else(|| ProviderError::Validation("Analytics storage not initialized".to_string()))?;
+
+    let args = parse_json(&request.payload)?;
+    let params: GetLiquidityVacuumsParams = serde_json::from_value(args)
+        .map_err(|e| ProviderError::Validation(format!("Invalid parameters: {}", e)))?;
+
+    let vacuums = get_liquidity_vacuums(storage.clone(), params)
+        .await
+        .map_err(|e| ProviderError::BinanceApi(e.to_string()))?;
+
+    let result = serde_json::to_value(&vacuums)?;
     Ok(Json {
         value: serde_json::to_string(&result)?.as_bytes().to_vec(),
     })

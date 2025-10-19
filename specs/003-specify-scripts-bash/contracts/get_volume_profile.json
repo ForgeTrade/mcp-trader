@@ -1,0 +1,81 @@
+{
+  "name": "binance.get_volume_profile",
+  "description": "Generate volume distribution histogram across price levels to identify high-volume nodes (support/resistance zones). Returns Point of Control (POC), Value Area High/Low (VAH/VAL - 70% volume boundaries), and liquidity vacuum zones.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "symbol": {
+        "type": "string",
+        "description": "Trading pair (e.g., ETHUSDT). Must be uppercase.",
+        "pattern": "^[A-Z]+$",
+        "examples": ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+      },
+      "duration_hours": {
+        "type": "integer",
+        "description": "Analysis time period in hours. Defaults to 24. Range: 1-168 hours (from FR-004).",
+        "minimum": 1,
+        "maximum": 168,
+        "default": 24
+      },
+      "tick_size": {
+        "type": "string",
+        "description": "Optional: Custom bin size for price levels. If omitted, auto-calculated as max(exchange_tick_size × 10, price_range / 100).",
+        "pattern": "^[0-9]+(\\.[0-9]+)?$"
+      }
+    },
+    "required": ["symbol"]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "symbol": {"type": "string"},
+      "histogram": {
+        "type": "array",
+        "description": "Volume bins sorted by price level (ascending)",
+        "items": {
+          "type": "object",
+          "properties": {
+            "price_level": {"type": "string", "description": "Price (Decimal)"},
+            "volume": {"type": "string", "description": "Traded volume at this level (Decimal)"},
+            "trade_count": {"type": "integer", "minimum": 0},
+            "percentage_of_total": {"type": "number", "minimum": 0, "maximum": 100}
+          },
+          "required": ["price_level", "volume", "trade_count", "percentage_of_total"]
+        }
+      },
+      "bin_size": {"type": "string", "description": "Price increment per bin (Decimal)"},
+      "point_of_control": {"type": "string", "description": "Price level with highest volume (POC)"},
+      "value_area_high": {"type": "string", "description": "Upper boundary of 70% volume (VAH)"},
+      "value_area_low": {"type": "string", "description": "Lower boundary of 70% volume (VAL)"},
+      "total_volume": {"type": "string", "description": "Total traded volume (Decimal)"},
+      "time_period_hours": {"type": "integer"},
+      "liquidity_vacuums": {
+        "type": "array",
+        "description": "Detected low-volume zones (volume <20% of median)",
+        "items": {
+          "type": "object",
+          "properties": {
+            "vacuum_id": {"type": "string", "format": "uuid"},
+            "price_range_low": {"type": "string"},
+            "price_range_high": {"type": "string"},
+            "volume_deficit_pct": {"type": "number", "minimum": 20},
+            "severity": {"type": "string", "enum": ["Medium", "High", "Critical"]},
+            "expected_impact": {"type": "string", "enum": ["FastMovement", "ModerateMovement"]},
+            "stop_placement_recommendation": {"type": "string"}
+          }
+        }
+      }
+    },
+    "required": ["symbol", "histogram", "bin_size", "point_of_control", "value_area_high", "value_area_low", "total_volume", "time_period_hours"]
+  },
+  "errors": [
+    {
+      "code": "insufficient_historical_data",
+      "message": "Minimum 1000 trades required for {duration}h profile, only {count} trades available"
+    },
+    {
+      "code": "websocket_disconnected",
+      "message": "Aggregated trade stream (@aggTrade) unavailable"
+    }
+  ]
+}

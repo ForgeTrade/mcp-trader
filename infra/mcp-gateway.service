@@ -1,0 +1,19 @@
+[Unit]
+Description=MCP Gateway Service
+After=network.target binance-provider.service
+Requires=binance-provider.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/mcp-trader/mcp-gateway
+Environment="PYTHONUNBUFFERED=1"
+Environment="GRPC_PROVIDERS=binance:localhost:50053"
+ExecStart=/root/.local/bin/uv run python -m mcp_gateway.main
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

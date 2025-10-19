@@ -1,0 +1,92 @@
+{
+  "name": "binance.get_microstructure_health",
+  "description": "Calculate composite 0-100 market health score from spread stability (25% weight), liquidity depth (35%), flow balance (25%), and update rate (15%). Returns interpretation: Excellent (80-100), Good (60-79), Fair (40-59), Poor (20-39), Critical (0-19).",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "symbol": {
+        "type": "string",
+        "description": "Trading pair (e.g., BTCUSDT). Must be uppercase.",
+        "pattern": "^[A-Z]+$",
+        "examples": ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+      }
+    },
+    "required": ["symbol"]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "score": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 100,
+        "description": "Composite health score (weighted sum of components)"
+      },
+      "components": {
+        "type": "object",
+        "description": "Individual component scores (each 0-100)",
+        "properties": {
+          "spread_stability": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Spread consistency score (25% weight)"
+          },
+          "liquidity_depth": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Available liquidity score (35% weight)"
+          },
+          "flow_balance": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Bid/ask pressure balance score (25% weight)"
+          },
+          "update_rate": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Orderbook update frequency score (15% weight)"
+          }
+        },
+        "required": ["spread_stability", "liquidity_depth", "flow_balance", "update_rate"]
+      },
+      "interpretation": {
+        "type": "string",
+        "enum": ["Excellent", "Good", "Fair", "Poor", "Critical"],
+        "description": "Health category mapping from score"
+      },
+      "timestamp": {
+        "type": "string",
+        "format": "date-time",
+        "description": "When health was calculated (UTC)"
+      },
+      "symbol": {"type": "string"},
+      "recommendations": {
+        "type": "array",
+        "description": "Optional: Actionable suggestions based on low-scoring components",
+        "items": {
+          "type": "object",
+          "properties": {
+            "component": {"type": "string"},
+            "issue": {"type": "string"},
+            "recommendation": {"type": "string"}
+          }
+        }
+      }
+    },
+    "required": ["score", "components", "interpretation", "timestamp", "symbol"]
+  },
+  "errors": [
+    {
+      "code": "insufficient_historical_data",
+      "message": "Need baseline metrics for health calculation"
+    },
+    {
+      "code": "websocket_disconnected",
+      "message": "Orderbook stream unavailable"
+    }
+  ]
+}

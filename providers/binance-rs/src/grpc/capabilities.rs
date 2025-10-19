@@ -25,6 +25,9 @@ impl CapabilityBuilder {
         #[cfg(feature = "orderbook")]
         builder.add_orderbook_tools();
 
+        #[cfg(feature = "orderbook_analytics")]
+        builder.add_analytics_tools();
+
         // Add resources
         builder.add_resources();
 
@@ -442,6 +445,92 @@ impl CapabilityBuilder {
         ];
 
         for (name, desc, schema) in orderbook_tools {
+            self.tools.push(Tool {
+                name: name.to_string(),
+                description: desc.to_string(),
+                input_schema: Self::json_schema(schema),
+                output_schema: None,
+            });
+        }
+    }
+
+    // ========== Analytics Tools (Feature-gated) ==========
+
+    #[cfg(feature = "orderbook_analytics")]
+    fn add_analytics_tools(&mut self) {
+        let analytics_tools = vec![
+            (
+                "binance.get_order_flow",
+                "Analyze bid/ask order flow dynamics over a time window",
+                r#"{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "symbol": {"type": "string", "pattern": "^[A-Z]+$", "description": "Trading pair (e.g., BTCUSDT)"},
+    "window_duration_secs": {"type": "integer", "minimum": 10, "maximum": 300, "default": 60, "description": "Analysis window in seconds"}
+  },
+  "required": ["symbol"],
+  "additionalProperties": false
+}"#,
+            ),
+            (
+                "binance.get_volume_profile",
+                "Generate volume profile histogram with POC and value area",
+                r#"{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "symbol": {"type": "string", "pattern": "^[A-Z]+$", "description": "Trading pair"},
+    "duration_hours": {"type": "integer", "minimum": 1, "maximum": 168, "default": 24, "description": "Time period in hours"},
+    "tick_size": {"type": "number", "description": "Optional bin size"}
+  },
+  "required": ["symbol"],
+  "additionalProperties": false
+}"#,
+            ),
+            (
+                "binance.detect_market_anomalies",
+                "Detect quote stuffing, iceberg orders, and flash crash risks",
+                r#"{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "symbol": {"type": "string", "pattern": "^[A-Z]+$", "description": "Trading pair"}
+  },
+  "required": ["symbol"],
+  "additionalProperties": false
+}"#,
+            ),
+            (
+                "binance.get_microstructure_health",
+                "Get composite market health score (0-100) with component breakdowns",
+                r#"{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "symbol": {"type": "string", "pattern": "^[A-Z]+$", "description": "Trading pair"}
+  },
+  "required": ["symbol"],
+  "additionalProperties": false
+}"#,
+            ),
+            (
+                "binance.get_liquidity_vacuums",
+                "Identify price zones with low volume for stop-loss placement",
+                r#"{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "symbol": {"type": "string", "pattern": "^[A-Z]+$", "description": "Trading pair"},
+    "duration_hours": {"type": "integer", "minimum": 1, "maximum": 168, "default": 24, "description": "Lookback period in hours"}
+  },
+  "required": ["symbol"],
+  "additionalProperties": false
+}"#,
+            ),
+        ];
+
+        for (name, desc, schema) in analytics_tools {
             self.tools.push(Tool {
                 name: name.to_string(),
                 description: desc.to_string(),

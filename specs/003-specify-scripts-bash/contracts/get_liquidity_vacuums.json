@@ -1,0 +1,91 @@
+{
+  "name": "binance.get_liquidity_vacuums",
+  "description": "Identify low-volume price zones (volume <20% of median) prone to rapid price movement. Returns vacuum severity (Critical >80% deficit, High 50-80%, Medium 20-50%) with stop loss placement recommendations.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "symbol": {
+        "type": "string",
+        "description": "Trading pair (e.g., SOLUSDT). Must be uppercase.",
+        "pattern": "^[A-Z]+$",
+        "examples": ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+      },
+      "lookback_minutes": {
+        "type": "integer",
+        "description": "Historical analysis window in minutes. Defaults to 30.",
+        "minimum": 10,
+        "maximum": 1440,
+        "default": 30
+      }
+    },
+    "required": ["symbol"]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "vacuums": {
+        "type": "array",
+        "description": "Detected liquidity vacuum zones (empty array if no gaps found)",
+        "items": {
+          "type": "object",
+          "properties": {
+            "vacuum_id": {"type": "string", "format": "uuid"},
+            "symbol": {"type": "string"},
+            "price_range_low": {
+              "type": "string",
+              "description": "Lower boundary of vacuum zone (Decimal)"
+            },
+            "price_range_high": {
+              "type": "string",
+              "description": "Upper boundary of vacuum zone (Decimal)"
+            },
+            "volume_deficit_pct": {
+              "type": "number",
+              "minimum": 20,
+              "description": "Percentage below median volume (>20% threshold for detection)"
+            },
+            "severity": {
+              "type": "string",
+              "enum": ["Medium", "High", "Critical"],
+              "description": "Risk level (Critical >80%, High 50-80%, Medium 20-50%)"
+            },
+            "expected_impact": {
+              "type": "string",
+              "enum": ["FastMovement", "ModerateMovement"],
+              "description": "Expected price discovery speed"
+            },
+            "detection_timestamp": {"type": "string", "format": "date-time"},
+            "stop_placement_recommendation": {
+              "type": "string",
+              "description": "Suggested stop loss levels to avoid this vacuum zone"
+            }
+          },
+          "required": ["vacuum_id", "symbol", "price_range_low", "price_range_high", "volume_deficit_pct", "severity", "expected_impact", "detection_timestamp"]
+        }
+      },
+      "analysis_window": {
+        "type": "object",
+        "properties": {
+          "start": {"type": "string", "format": "date-time"},
+          "end": {"type": "string", "format": "date-time"},
+          "lookback_minutes": {"type": "integer"}
+        }
+      },
+      "median_volume": {
+        "type": "string",
+        "description": "Median volume per price level used as baseline (Decimal)"
+      }
+    },
+    "required": ["vacuums", "analysis_window", "median_volume"]
+  },
+  "errors": [
+    {
+      "code": "insufficient_historical_data",
+      "message": "Need at least {N} price levels for median calculation"
+    },
+    {
+      "code": "websocket_disconnected",
+      "message": "Trade stream unavailable"
+    }
+  ]
+}
