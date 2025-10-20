@@ -153,8 +153,12 @@ class UnifiedToolRouter:
 
             # Add routing metadata to response
             if "result" in result:
-                result["result"]["latency_ms"] = latency_ms
-                result["result"]["venue"] = venue
+                # Only add metadata if result is a dict (not a list/array)
+                if isinstance(result["result"], dict):
+                    result["result"]["latency_ms"] = latency_ms
+                    result["result"]["venue"] = venue
+
+                # Always add routing_info at top level
                 result["routing_info"] = {
                     "unified_tool": unified_tool_name,
                     "provider_tool": provider_tool_name,

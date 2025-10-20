@@ -893,8 +893,17 @@ class ChatGPTMCPServer:
                                 )]
 
                             elif name == "market.get_klines":
-                                # Klines don't need normalization yet - just add venue and latency
-                                pass
+                                # Feature 016: Normalize klines response
+                                normalized = self.schema_adapter.normalize(
+                                    venue=venue,
+                                    data_type="klines",
+                                    raw_response=raw_response,
+                                    additional_fields={"latency_ms": result.get("routing_info", {}).get("latency_ms")}
+                                )
+                                return [TextContent(
+                                    type="text",
+                                    text=json.dumps({"result": normalized}, indent=2)
+                                )]
 
                             # For tools without specific normalization (market.get_avg_price, analytics.get_order_flow, analytics.detect_liquidity_vacuums)
                             # Return as-is with routing metadata

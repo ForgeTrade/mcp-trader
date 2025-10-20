@@ -23,6 +23,7 @@ class SchemaAdapter:
                 "ticker": self._normalize_binance_ticker,
                 "orderbook_l1": self._normalize_binance_orderbook_l1,
                 "orderbook_l2": self._normalize_binance_orderbook_l2,
+                "klines": self._normalize_binance_klines,  # NEW: Feature 016 bugfix
 
                 # NEW: Trading normalizers (Feature 013 - FR-001 to FR-007)
                 "order": self._normalize_binance_order,
@@ -170,68 +171,60 @@ class SchemaAdapter:
         Normalize Binance orderbook to unified L1 (top-of-book) schema.
         Implements FR-009 (orderbook normalization).
 
-        Input format (Binance orderbook):
+        Input format (Binance provider OrderBookMetrics):
         {
-            "lastUpdateId": 123456789,
-            "bids": [["43250.50", "1.234"], ["43250.00", "2.456"], ...],
-            "asks": [["43251.00", "0.987"], ["43251.50", "1.543"], ...]
+            "symbol": "ETHUSDT",
+            "timestamp": 1697048400000,
+            "spread_bps": 1.15,
+            "microprice": 43250.75,
+            "bid_volume": 125.5,
+            "ask_volume": 98.3,
+            "imbalance_ratio": 1.276,
+            "best_bid": "43250.50",
+            "best_ask": "43251.00",
+            "walls": {...},
+            "slippage_estimates": {...}
         }
 
         Output format (unified L1):
         {
-            "bid_price": 43250.50,
-            "bid_quantity": 1.234,
-            "ask_price": 43251.00,
-            "ask_quantity": 0.987,
-            "mid": 43250.75,
+            "best_bid": 43250.50,
+            "best_ask": 43251.00,
             "spread_bps": 1.15,
+            "microprice": 43250.75,
+            "imbalance": 1.276,
             "timestamp": 1697048400000,
-            "venue": "binance",
+            "venue_symbol": "ETHUSDT",
             ...
         }
         """
-        # Extract top of book (FR-009)
-        if not raw.get("bids") or not raw.get("asks"):
-            raise ValueError("Invalid orderbook: missing bids or asks")
+        # Extract best bid and ask from provider response
+        if "best_bid" not in raw or "best_ask" not in raw:
+            raise ValueError("Invalid orderbook: missing best_bid or best_ask")
 
-        best_bid = raw["bids"][0]
-        best_ask = raw["asks"][0]
+        # Parse prices (provider returns them as strings)
+        best_bid = float(raw["best_bid"])
+        best_ask = float(raw["best_ask"])
 
-        # Parse prices and quantities
-        bid_price = float(best_bid[0])
-        bid_quantity = float(best_bid[1])
-        ask_price = float(best_ask[0])
-        ask_quantity = float(best_ask[1])
-
-        # Calculate mid-price (FR-009)
-        mid = (bid_price + ask_price) / 2.0
-
-        # Calculate spread in basis points (FR-009)
-        spread_bps = ((ask_price - bid_price) / mid) * 10000.0 if mid > 0 else 0.0
-
-        # Calculate absolute spread
-        spread_absolute = ask_price - bid_price
-
-        # Calculate order imbalance ratio
-        total_quantity = bid_quantity + ask_quantity
-        imbalance_ratio = bid_quantity / total_quantity if total_quantity > 0 else 0.5
-
-        # Build normalized response
+        # Build normalized response using provider-calculated metrics
         normalized = {
-            "bid_price": bid_price,
-            "bid_quantity": bid_quantity,
-            "ask_price": ask_price,
-            "ask_quantity": ask_quantity,
-            "mid": mid,
-            "spread_bps": spread_bps,
-            "spread_absolute": spread_absolute,
-            "imbalance_ratio": imbalance_ratio,
-            "timestamp": int(time.time() * 1000),  # Current time as Binance doesn't provide orderbook timestamp
+            "best_bid": best_bid,
+            "best_ask": best_ask,
+            "spread_bps": raw.get("spread_bps", 0.0),
+            "microprice": raw.get("microprice", (best_bid + best_ask) / 2.0),
+            "imbalance": raw.get("imbalance_ratio", 0.0),
+            "timestamp": raw.get("timestamp", int(time.time() * 1000)),
         }
 
-        # Optional fields
-        if "lastUpdateId" in raw:
-            normalized["update_id"] = raw["lastUpdateId"]
+        # Add symbol if present
+        if "symbol" in raw:
+            normalized["venue_symbol"] = raw["symbol"]
+
+        # Add optional volume metrics
+        if "bid_volume" in raw:
+            normalized["bid_volume"] = raw["bid_volume"]
+        if "ask_volume" in raw:
+            normalized["ask_volume"] = raw["ask_volume"]
 
         return normalized
 
@@ -273,6 +266,81 @@ class SchemaAdapter:
 
         if "lastUpdateId" in raw:
             normalized["update_id"] = raw["lastUpdateId"]
+
+        return normalized
+
+    def _normalize_binance_klines(self, raw: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Normalize Binance klines/candlesticks to unified schema.
+
+        Input format (Binance provider response):
+        Response is directly an array of kline arrays or objects.
+        If array of arrays: [[open_time, open, high, low, close, volume, ...], ...]
+        If array of objects: [{"open_time": ..., "open": ..., ...}, ...]
+
+        Output format (unified):
+        {
+            "klines": [
+                {
+                    "open_time": 1697048400000,
+                    "open": 43250.50,
+                    "high": 43280.00,
+                    "low": 43240.00,
+                    "close": 43270.00,
+                    "volume": 125.5,
+                    "close_time": 1697052000000
+                },
+                ...
+            ],
+            "interval": "1h",
+            "venue_symbol": "BTCUSDT"
+        }
+        """
+        # Provider should return array directly
+        if isinstance(raw, list):
+            # Raw is already the klines array
+            klines_data = raw
+        else:
+            # Might be wrapped in a dict
+            klines_data = raw.get("klines", raw.get("data", []))
+
+        # Normalize each kline
+        normalized_klines = []
+        for kline in klines_data:
+            if isinstance(kline, list):
+                # Array format: [open_time, open, high, low, close, volume, close_time, ...]
+                normalized_klines.append({
+                    "open_time": int(kline[0]) if len(kline) > 0 else 0,
+                    "open": float(kline[1]) if len(kline) > 1 else 0.0,
+                    "high": float(kline[2]) if len(kline) > 2 else 0.0,
+                    "low": float(kline[3]) if len(kline) > 3 else 0.0,
+                    "close": float(kline[4]) if len(kline) > 4 else 0.0,
+                    "volume": float(kline[5]) if len(kline) > 5 else 0.0,
+                    "close_time": int(kline[6]) if len(kline) > 6 else 0,
+                })
+            elif isinstance(kline, dict):
+                # Object format: already structured
+                normalized_klines.append({
+                    "open_time": kline.get("open_time", kline.get("openTime", 0)),
+                    "open": float(kline.get("open", 0)),
+                    "high": float(kline.get("high", 0)),
+                    "low": float(kline.get("low", 0)),
+                    "close": float(kline.get("close", 0)),
+                    "volume": float(kline.get("volume", 0)),
+                    "close_time": kline.get("close_time", kline.get("closeTime", 0)),
+                })
+
+        # Build response
+        normalized = {
+            "klines": normalized_klines
+        }
+
+        # Add metadata if present in original response
+        if isinstance(raw, dict):
+            if "interval" in raw:
+                normalized["interval"] = raw["interval"]
+            if "symbol" in raw:
+                normalized["venue_symbol"] = raw["symbol"]
 
         return normalized
 
