@@ -241,7 +241,7 @@ class ChatGPTMCPServer:
                             )]
 
                 else:
-                    # Provider-specific tool (original behavior)
+                    # Provider-specific tool (FR-010: normalize provider-specific tools too)
                     # FR-047: Determine which provider owns this tool by parsing the tool name
                     provider_name = None
                     if "." in name:
@@ -268,13 +268,51 @@ class ChatGPTMCPServer:
                         raise ValueError(f"Provider client not found for tool {name}")
 
                     # Call the provider via gRPC
+                    import time
+                    start_time = time.time()
                     result = await client.invoke(
                         tool_name=name,
                         payload=arguments,
                         correlation_id=correlation_id,
                         timeout=5.0
                     )
+                    latency_ms = (time.time() - start_time) * 1000.0
 
+                    # FR-010: Apply schema normalization for provider-specific tools
+                    # Map tool names to data types for normalization
+                    tool_to_datatype = {
+                        "get_ticker": "ticker",
+                        "orderbook_l1": "orderbook_l1",
+                        "orderbook_l2": "orderbook_l2",
+                    }
+
+                    # Check if this tool supports normalization
+                    data_type = None
+                    for tool_suffix, dtype in tool_to_datatype.items():
+                        if name.endswith(tool_suffix):
+                            data_type = dtype
+                            break
+
+                    # Apply normalization if supported
+                    if data_type and provider_name and "result" in result:
+                        if self.schema_adapter.is_supported(provider_name, data_type):
+                            try:
+                                normalized = self.schema_adapter.normalize(
+                                    venue=provider_name,
+                                    data_type=data_type,
+                                    raw_response=result["result"],
+                                    additional_fields={"latency_ms": latency_ms}
+                                )
+                                logger.info(f"Normalized provider-specific tool {name} response")
+                                return [TextContent(
+                                    type="text",
+                                    text=json.dumps({"result": normalized}, indent=2)
+                                )]
+                            except Exception as e:
+                                logger.warning(f"Failed to normalize {name}: {e}, returning raw response")
+                                # Fall through to return raw response
+
+                    # Return raw response if normalization not supported or failed
                     return [TextContent(
                         type="text",
                         text=json.dumps(result, indent=2)
