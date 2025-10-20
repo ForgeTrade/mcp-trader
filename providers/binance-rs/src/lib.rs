@@ -13,3 +13,6 @@ pub mod config; // Configuration management
 
 #[cfg(feature = "orderbook")]
 pub mod orderbook; // WebSocket orderbook manager
+
+#[cfg(feature = "mcp_server")]
+pub mod mcp; // MCP server implementation

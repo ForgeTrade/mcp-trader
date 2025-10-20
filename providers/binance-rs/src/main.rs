@@ -5,27 +5,30 @@ use tonic::transport::Server;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Parse command-line arguments first to determine mode
+    let args: Vec<String> = std::env::args().collect();
+    let (mode, port) = parse_args(&args);
+
     // Initialize tracing/logging
+    // For stdio mode, output to stderr (stdout is reserved for MCP protocol)
     tracing_subscriber::fmt()
         .with_target(false)
         .with_thread_ids(false)
         .with_level(true)
+        .with_writer(std::io::stderr) // Always write to stderr for MCP compatibility
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
                 .add_directive(tracing::Level::INFO.into()),
         )
         .init();
 
-    tracing::info!("Starting Binance Provider...");
-
-    // Parse command-line arguments
-    let args: Vec<String> = std::env::args().collect();
-    let (mode, port) = parse_args(&args);
+    tracing::info!("Starting Binance Provider in {} mode...", mode);
 
     match mode.as_str() {
         "grpc" => run_grpc_server(port).await?,
         "http" => run_http_server(port).await?,
         "stdio" => run_stdio_server().await?,
+        "sse" => run_sse_server(port).await?,
         _ => {
             eprintln!("Invalid mode: {}", mode);
             print_usage();
@@ -54,6 +57,7 @@ fn parse_args(args: &[String]) -> (String, u16) {
             "--grpc" => mode = "grpc".to_string(),
             "--http" => mode = "http".to_string(),
             "--stdio" => mode = "stdio".to_string(),
+            "--sse" => mode = "sse".to_string(),
             "--port" => {
                 if i + 1 < args.len() {
                     port = args[i + 1].parse().unwrap_or(0);
@@ -79,6 +83,7 @@ fn parse_args(args: &[String]) -> (String, u16) {
         port = match mode.as_str() {
             "http" => 3000,
             "grpc" => 50053,
+            "sse" => 8000,
             _ => 50053,
         };
     }
@@ -94,11 +99,12 @@ fn print_usage() {
     println!("    binance-provider [OPTIONS]");
     println!();
     println!("OPTIONS:");
-    println!("    --mode <MODE>       Transport mode: grpc, http, or stdio (default: grpc)");
+    println!("    --mode <MODE>       Transport mode: grpc, http, stdio, or sse (default: grpc)");
     println!("    --grpc              Run in gRPC mode (shortcut for --mode grpc)");
     println!("    --http              Run in HTTP mode (shortcut for --mode http)");
     println!("    --stdio             Run in stdio MCP mode (shortcut for --mode stdio)");
-    println!("    --port <PORT>       Port to listen on (default: 50053 for gRPC, 3000 for HTTP)");
+    println!("    --sse               Run in SSE mode (shortcut for --mode sse)");
+    println!("    --port <PORT>       Port to listen on (default: 50053 for gRPC, 3000 for HTTP, 8000 for SSE)");
     println!("    --help, -h          Print this help message");
     println!();
     println!("ENVIRONMENT VARIABLES:");
@@ -362,15 +368,55 @@ async fn run_http_server(_port: u16) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Run the provider in stdio MCP mode
+#[cfg(feature = "mcp_server")]
 async fn run_stdio_server() -> Result<(), Box<dyn std::error::Error>> {
-    tracing::info!("Starting in stdio MCP mode...");
+    use binance_provider::transport::stdio::run_stdio_server;
+    run_stdio_server().await
+}
 
-    // TODO: Implement stdio MCP server using rmcp
-    // This would use the rmcp library to run as a traditional stdio MCP server
-    // For now, this is a placeholder for future implementation
+#[cfg(not(feature = "mcp_server"))]
+async fn run_stdio_server() -> Result<(), Box<dyn std::error::Error>> {
+    tracing::error!("stdio mode not available - compile with 'mcp_server' feature");
+    Err("stdio mode not available".into())
+}
 
-    tracing::error!("stdio mode not yet implemented");
-    tracing::info!("Please use --grpc mode instead");
+/// Run the provider in SSE mode (Server-Sent Events)
+#[cfg(feature = "mcp_server")]
+async fn run_sse_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
+    use binance_provider::mcp::BinanceServer;
+    use binance_provider::transport::sse::{CancellationToken, SseServer, SseServerConfig};
 
-    Err("stdio mode not implemented".into())
+    let addr = format!("0.0.0.0:{}", port).parse()?;
+    tracing::info!("Starting SSE server on {}", addr);
+
+    // Create SSE server configuration
+    let config = SseServerConfig {
+        bind: addr,
+        sse_path: "/sse".to_string(),
+        post_path: "/message".to_string(),
+        ct: CancellationToken::new(),
+        sse_keep_alive: None,
+    };
+
+    // Start SSE server
+    let sse_server = SseServer::serve_with_config(config).await?;
+    tracing::info!("SSE server ready on {}", addr);
+    tracing::info!("  SSE endpoint: http://{}/sse", addr);
+    tracing::info!("  POST endpoint: http://{}/message", addr);
+
+    // Attach MCP service
+    let shutdown_ct = sse_server.with_service(|| BinanceServer::new());
+
+    // Wait for shutdown signal
+    tokio::signal::ctrl_c().await?;
+    tracing::info!("Received shutdown signal (Ctrl+C)");
+    shutdown_ct.cancel();
+
+    Ok(())
+}
+
+#[cfg(not(feature = "mcp_server"))]
+async fn run_sse_server(_port: u16) -> Result<(), Box<dyn std::error::Error>> {
+    tracing::error!("SSE mode not available - compile with 'mcp_server' feature");
+    Err("SSE mode not available".into())
 }

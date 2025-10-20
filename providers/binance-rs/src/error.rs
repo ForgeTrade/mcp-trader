@@ -135,3 +135,52 @@ impl From<ProviderError> for tonic::Status {
         }
     }
 }
+
+// MCP error conversion helpers (feature-gated)
+#[cfg(feature = "mcp_server")]
+impl McpError {
+    /// Converts McpError to rmcp ErrorData for MCP protocol responses
+    pub fn to_error_data(&self) -> rmcp::model::ErrorData {
+        use rmcp::model::{ErrorCode, ErrorData};
+
+        match self {
+            McpError::RateLimitError(msg) => ErrorData::new(
+                ErrorCode(429),
+                msg.clone(),
+                None,
+            ),
+            McpError::InvalidRequest(msg) => ErrorData::new(
+                ErrorCode(400),
+                msg.clone(),
+                None,
+            ),
+            McpError::ParseError(msg) => ErrorData::new(
+                ErrorCode(400),
+                format!("Parse error: {}", msg),
+                None,
+            ),
+            McpError::ConnectionError(msg) => ErrorData::new(
+                ErrorCode(503),
+                msg.clone(),
+                None,
+            ),
+            McpError::NotReady(msg) => ErrorData::new(
+                ErrorCode(503),
+                msg.clone(),
+                None,
+            ),
+            McpError::InternalError(msg) => ErrorData::new(
+                ErrorCode(500),
+                msg.clone(),
+                None,
+            ),
+        }
+    }
+}
+
+#[cfg(feature = "mcp_server")]
+impl From<McpError> for rmcp::model::ErrorData {
+    fn from(err: McpError) -> Self {
+        err.to_error_data()
+    }
+}
