@@ -112,11 +112,34 @@ pub struct GetVolumeProfileParams {
     /// Optional custom bin size for price levels
     ///
     /// If omitted, auto-calculated as max(exchange_tick_size × 10, price_range / 100)
+    /// Accepts both string ("0.001") and number (0.001) formats
     #[schemars(
         description = "Optional: Custom bin size for price levels. If omitted, auto-calculated as max(exchange_tick_size × 10, price_range / 100).",
         regex(pattern = r"^[0-9]+(\.[0-9]+)?$")
     )]
+    #[serde(default, deserialize_with = "deserialize_optional_string_or_number")]
     pub tick_size: Option<String>,
+}
+
+/// Custom deserializer that accepts both string and number for tick_size
+fn deserialize_optional_string_or_number<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::Error;
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrNumber {
+        String(String),
+        Number(f64),
+    }
+
+    match Option::<StringOrNumber>::deserialize(deserializer)? {
+        None => Ok(None),
+        Some(StringOrNumber::String(s)) => Ok(Some(s)),
+        Some(StringOrNumber::Number(n)) => Ok(Some(n.to_string())),
+    }
 }
 
 fn default_duration_hours() -> u32 {

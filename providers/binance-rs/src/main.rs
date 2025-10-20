@@ -219,6 +219,85 @@ async fn run_grpc_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
         );
 
         tracing::info!("Snapshot persistence task spawned for BTCUSDT, ETHUSDT");
+
+        // Feature 008: Spawn trade stream persistence task
+        let trade_shutdown_rx = shutdown_tx.subscribe();
+        let trade_storage_handle = provider.trade_storage.clone();
+
+        tokio::spawn(async move {
+            use binance_provider::orderbook::analytics::trade_stream::TradeStreamHandler;
+            use binance_provider::orderbook::analytics::trade_storage::AggTrade as PersistAggTrade;
+            use tokio::time::interval;
+            use std::time::Duration;
+
+            // Create unbounded channels for BTC and ETH trade streams
+            let (btc_tx, mut btc_rx) = tokio::sync::mpsc::unbounded_channel();
+            let (eth_tx, mut eth_rx) = tokio::sync::mpsc::unbounded_channel();
+
+            // Spawn WebSocket handlers
+            let mut btc_handler = TradeStreamHandler::new("BTCUSDT");
+            let mut eth_handler = TradeStreamHandler::new("ETHUSDT");
+
+            tokio::spawn(async move {
+                if let Err(e) = btc_handler.connect_with_backoff(btc_tx).await {
+                    tracing::error!("BTCUSDT trade stream failed: {}", e);
+                }
+            });
+
+            tokio::spawn(async move {
+                if let Err(e) = eth_handler.connect_with_backoff(eth_tx).await {
+                    tracing::error!("ETHUSDT trade stream failed: {}", e);
+                }
+            });
+
+            tracing::info!("Starting trade stream collection for BTCUSDT");
+            tracing::info!("Starting trade stream collection for ETHUSDT");
+
+            // Buffers for 1-second batching
+            let mut btc_buffer: Vec<PersistAggTrade> = Vec::new();
+            let mut eth_buffer: Vec<PersistAggTrade> = Vec::new();
+
+            let mut flush_interval = interval(Duration::from_secs(1));
+            let mut shutdown_rx = trade_shutdown_rx;
+
+            loop {
+                tokio::select! {
+                    Some(trade) = btc_rx.recv() => {
+                        btc_buffer.push((&trade).into());
+                    }
+                    Some(trade) = eth_rx.recv() => {
+                        eth_buffer.push((&trade).into());
+                    }
+                    _ = flush_interval.tick() => {
+                        let now_ms = chrono::Utc::now().timestamp_millis();
+
+                        if !btc_buffer.is_empty() {
+                            let count = btc_buffer.len();
+                            if let Err(e) = trade_storage_handle.store_batch("BTCUSDT", now_ms, btc_buffer.drain(..).collect()) {
+                                tracing::error!("Failed to store BTCUSDT trades: {}", e);
+                            } else {
+                                tracing::info!("Stored {} trades for BTCUSDT at timestamp {}", count, now_ms);
+                            }
+                        }
+
+                        if !eth_buffer.is_empty() {
+                            let count = eth_buffer.len();
+                            if let Err(e) = trade_storage_handle.store_batch("ETHUSDT", now_ms, eth_buffer.drain(..).collect()) {
+                                tracing::error!("Failed to store ETHUSDT trades: {}", e);
+                            } else {
+                                tracing::info!("Stored {} trades for ETHUSDT at timestamp {}", count, now_ms);
+                            }
+                        }
+                    }
+                    _ = shutdown_rx.recv() => {
+                        tracing::info!("Shutting down trade persistence task...");
+                        break;
+                    }
+                }
+            }
+        });
+
+        tracing::info!("Trade persistence task spawned for BTCUSDT, ETHUSDT");
     }
 
     // Start the gRPC server with graceful shutdown
@@ -247,6 +326,7 @@ async fn run_http_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
             provider.binance_client,
             Some(provider.orderbook_manager),
             Some(provider.analytics_storage),
+            Some(provider.trade_storage),
         )
         .await?;
     }

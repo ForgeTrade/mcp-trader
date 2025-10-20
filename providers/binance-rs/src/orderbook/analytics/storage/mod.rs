@@ -115,8 +115,11 @@ impl SnapshotStorage {
     }
 
     /// Get database handle for advanced queries (prefix scans)
-    pub(crate) fn db(&self) -> &Arc<DB> {
-        &self.db
+    ///
+    /// This allows sharing the same DB across multiple storage modules
+    /// (e.g., SnapshotStorage for orderbook snapshots, TradeStorage for trade persistence)
+    pub fn db(&self) -> Arc<DB> {
+        self.db.clone()
     }
 }
 

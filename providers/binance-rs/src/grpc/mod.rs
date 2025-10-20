@@ -28,6 +28,10 @@ pub struct BinanceProviderServer {
     /// Analytics storage (optional, enabled with orderbook_analytics feature)
     #[cfg(feature = "orderbook_analytics")]
     pub analytics_storage: Arc<crate::orderbook::analytics::SnapshotStorage>,
+
+    /// Trade persistence storage (optional, enabled with orderbook_analytics feature)
+    #[cfg(feature = "orderbook_analytics")]
+    pub trade_storage: Arc<crate::orderbook::analytics::TradeStorage>,
 }
 
 impl BinanceProviderServer {
@@ -53,10 +57,18 @@ impl BinanceProviderServer {
 
             tracing::info!("Analytics storage initialized at: {}", data_path);
 
+            // Initialize TradeStorage (shares same RocksDB as SnapshotStorage)
+            let trade_storage = Arc::new(
+                crate::orderbook::analytics::TradeStorage::new(analytics_storage.db())
+            );
+
+            tracing::info!("Trade persistence storage initialized (shared RocksDB)");
+
             Ok(Self {
                 binance_client,
                 orderbook_manager,
                 analytics_storage,
+                trade_storage,
             })
         }
 
@@ -113,6 +125,7 @@ impl Provider for BinanceProviderServer {
             &self.binance_client,
             Some(self.orderbook_manager.clone()),
             Some(self.analytics_storage.clone()),
+            Some(self.trade_storage.clone()),
             &req
         ).await?;
 
@@ -121,12 +134,14 @@ impl Provider for BinanceProviderServer {
             &self.binance_client,
             Some(self.orderbook_manager.clone()),
             None,
+            None,
             &req
         ).await?;
 
         #[cfg(not(feature = "orderbook"))]
         let response = tools::route_tool(
             &self.binance_client,
+            None,
             None,
             None,
             &req

@@ -26,6 +26,7 @@ use session::SessionStore;
 /// * `binance_client` - Binance API client
 /// * `orderbook_manager` - Optional orderbook manager
 /// * `analytics_storage` - Optional analytics storage
+/// * `trade_storage` - Optional trade storage
 ///
 /// # Endpoints
 /// - POST /mcp: JSON-RPC 2.0 endpoint
@@ -43,6 +44,8 @@ pub async fn start_http_server(
     orderbook_manager: Option<Arc<crate::orderbook::OrderBookManager>>,
     #[cfg(feature = "orderbook_analytics")]
     analytics_storage: Option<Arc<crate::orderbook::analytics::SnapshotStorage>>,
+    #[cfg(feature = "orderbook_analytics")]
+    trade_storage: Option<Arc<crate::orderbook::analytics::TradeStorage>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("Initializing HTTP MCP server...");
 
@@ -57,6 +60,8 @@ pub async fn start_http_server(
         orderbook_manager,
         #[cfg(feature = "orderbook_analytics")]
         analytics_storage,
+        #[cfg(feature = "orderbook_analytics")]
+        trade_storage,
     };
 
     // Configure CORS

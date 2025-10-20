@@ -32,7 +32,16 @@ pub mod health;
 pub mod tools;
 
 #[cfg(feature = "orderbook_analytics")]
+pub mod trade_storage;
+
+#[cfg(feature = "orderbook_analytics")]
+pub mod trade_websocket;
+
+#[cfg(feature = "orderbook_analytics")]
 pub use storage::SnapshotStorage;
+
+#[cfg(feature = "orderbook_analytics")]
+pub use trade_storage::TradeStorage;
 
 #[cfg(feature = "orderbook_analytics")]
 pub use types::*;

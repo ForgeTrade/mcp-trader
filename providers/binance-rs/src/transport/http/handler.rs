@@ -42,6 +42,10 @@ pub struct AppState {
     /// Analytics storage (optional)
     #[cfg(feature = "orderbook_analytics")]
     pub analytics_storage: Option<Arc<crate::orderbook::analytics::SnapshotStorage>>,
+
+    /// Trade storage (optional)
+    #[cfg(feature = "orderbook_analytics")]
+    pub trade_storage: Option<Arc<crate::orderbook::analytics::TradeStorage>>,
 }
 
 /// Main JSON-RPC endpoint handler
@@ -213,6 +217,7 @@ async fn handle_tools_call(
         &state.binance_client,
         state.orderbook_manager.clone(),
         state.analytics_storage.clone(),
+        state.trade_storage.clone(),
         &invoke_request,
     )
     .await?;
@@ -222,6 +227,7 @@ async fn handle_tools_call(
         &state.binance_client,
         state.orderbook_manager.clone(),
         None,
+        None,
         &invoke_request,
     )
     .await?;
@@ -229,6 +235,7 @@ async fn handle_tools_call(
     #[cfg(not(feature = "orderbook"))]
     let response = crate::grpc::tools::route_tool(
         &state.binance_client,
+        None,
         None,
         None,
         &invoke_request,

@@ -30,6 +30,10 @@ pub async fn route_tool(
     analytics_storage: Option<Arc<crate::orderbook::analytics::SnapshotStorage>>,
     #[cfg(not(feature = "orderbook_analytics"))]
     _analytics_storage: Option<()>,
+    #[cfg(feature = "orderbook_analytics")]
+    trade_storage: Option<Arc<crate::orderbook::analytics::TradeStorage>>,
+    #[cfg(not(feature = "orderbook_analytics"))]
+    _trade_storage: Option<()>,
     request: &InvokeRequest,
 ) -> Result<InvokeResponse> {
     tracing::debug!("Routing tool: {}", request.tool_name);
@@ -66,7 +70,7 @@ pub async fn route_tool(
         #[cfg(feature = "orderbook_analytics")]
         "binance.get_order_flow" => handle_get_order_flow(analytics_storage.as_ref(), request).await?,
         #[cfg(feature = "orderbook_analytics")]
-        "binance.get_volume_profile" => handle_get_volume_profile(request).await?,
+        "binance.get_volume_profile" => handle_get_volume_profile(trade_storage.as_ref(), request).await?,
         #[cfg(feature = "orderbook_analytics")]
         "binance.detect_market_anomalies" => handle_detect_market_anomalies(analytics_storage.as_ref(), request).await?,
         #[cfg(feature = "orderbook_analytics")]
@@ -535,9 +539,13 @@ async fn handle_get_order_flow(
 
 #[cfg(feature = "orderbook_analytics")]
 async fn handle_get_volume_profile(
+    trade_storage: Option<&Arc<crate::orderbook::analytics::TradeStorage>>,
     request: &InvokeRequest,
 ) -> Result<Json> {
     use crate::orderbook::analytics::tools::{get_volume_profile, GetVolumeProfileParams};
+
+    let trade_storage = trade_storage
+        .ok_or_else(|| ProviderError::Validation("Trade storage not initialized".to_string()))?;
 
     // Parse parameters
     let args = parse_json(&request.payload)?;
@@ -547,12 +555,37 @@ async fn handle_get_volume_profile(
     tracing::info!("Getting volume profile for symbol: {} (duration: {}h)",
         params.symbol, params.duration_hours);
 
-    // TODO: In production, this would pull from a trade buffer/cache
-    // For now, return a placeholder error
-    let trades = Vec::new(); // This should come from a global trade buffer
+    // Query trades from TradeStorage for the specified time window
+    let end_time = chrono::Utc::now().timestamp_millis();
+    let start_time = end_time - (params.duration_hours as i64 * 3600 * 1000);
+
+    let trades = trade_storage
+        .query_trades(&params.symbol, start_time, end_time)
+        .map_err(|e| ProviderError::BinanceApi(format!("Failed to query trades: {}", e)))?;
+
+    tracing::debug!("Queried {} trades for {} over {}h window",
+        trades.len(), params.symbol, params.duration_hours);
+
+    // Convert trade_storage::AggTrade to trade_stream::AggTrade
+    let trades_for_profile: Vec<crate::orderbook::analytics::trade_stream::AggTrade> = trades
+        .into_iter()
+        .map(|t| crate::orderbook::analytics::trade_stream::AggTrade {
+            event_type: "aggTrade".to_string(),
+            event_time: t.timestamp,
+            symbol: params.symbol.clone(),
+            agg_trade_id: t.trade_id as u64,
+            price: t.price.clone(),
+            quantity: t.quantity.clone(),
+            first_trade_id: t.trade_id as u64,
+            last_trade_id: t.trade_id as u64,
+            trade_time: t.timestamp,
+            is_buyer_maker: t.buyer_is_maker,
+            is_best_match: true,
+        })
+        .collect();
 
     // Call analytics tool
-    let profile = get_volume_profile(trades, params)
+    let profile = get_volume_profile(trades_for_profile, params)
         .await
         .map_err(|e| ProviderError::BinanceApi(e.to_string()))?;
 
