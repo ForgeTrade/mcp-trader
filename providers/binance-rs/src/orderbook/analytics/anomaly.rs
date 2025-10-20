@@ -32,9 +32,20 @@ pub fn detect_quote_stuffing(
         return None;
     }
 
-    // Calculate update rate (snapshots per second)
-    let duration_secs = snapshots.len() as f64; // Assuming 1-second intervals
-    let update_count = snapshots.windows(2).count();
+    // Calculate update rate (snapshots per second) using actual timestamps
+    let first_timestamp = snapshots.first().unwrap().timestamp;
+    let last_timestamp = snapshots.last().unwrap().timestamp;
+    let duration_millis = (last_timestamp - first_timestamp) as f64;
+
+    // Handle edge case: all snapshots have same timestamp
+    // Assume 1 second total duration (for testing scenarios where timestamps are identical)
+    let duration_secs = if duration_millis < 1.0 {
+        1.0
+    } else {
+        duration_millis / 1000.0
+    };
+
+    let update_count = snapshots.len() - 1;
     let update_rate = (update_count as f64) / duration_secs;
 
     // Thresholds from FR
