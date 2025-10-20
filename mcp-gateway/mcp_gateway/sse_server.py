@@ -96,17 +96,8 @@ class ChatGPTMCPServer:
 
         @self.server.list_tools()
         async def list_tools():
-            """List all available tools including unified tools (FR-001, FR-002)."""
-            # Convert provider tools to MCP Tool objects
-            tools = []
-            for tool_dict in self.provider_tools:
-                tools.append(Tool(
-                    name=tool_dict["name"],
-                    description=tool_dict["description"],
-                    inputSchema=tool_dict.get("input_schema", {}),
-                ))
-
-            # T020: Add unified tools (FR-001, FR-002)
+            """List ONLY unified tools (FR-001, FR-002). Provider-specific tools are hidden."""
+            # FR-001, FR-002: Expose ONLY unified tools, hide provider-specific tools
             venues_list = list(self.provider_clients.keys())
 
             unified_tools = [
@@ -150,15 +141,69 @@ class ChatGPTMCPServer:
                         }
                     }
                 ),
+                Tool(
+                    name="market.get_orderbook_l2",
+                    description=f"Get normalized full depth orderbook (L2) for any venue. Available venues: {venues_list}",
+                    inputSchema={
+                        "type": "object",
+                        "required": ["venue", "instrument"],
+                        "properties": {
+                            "venue": {
+                                "type": "string",
+                                "description": f"Exchange venue to query. Available: {', '.join(venues_list)}",
+                                "enum": venues_list
+                            },
+                            "instrument": {
+                                "type": "string",
+                                "description": "Trading pair symbol (e.g., BTCUSDT)",
+                                "examples": ["BTCUSDT", "ETHUSDT"]
+                            },
+                            "limit": {
+                                "type": "integer",
+                                "description": "Number of price levels to return (default: 100)",
+                                "default": 100
+                            }
+                        }
+                    }
+                ),
+                Tool(
+                    name="market.get_klines",
+                    description=f"Get normalized historical klines/candlesticks for any venue. Available venues: {venues_list}",
+                    inputSchema={
+                        "type": "object",
+                        "required": ["venue", "instrument", "interval"],
+                        "properties": {
+                            "venue": {
+                                "type": "string",
+                                "description": f"Exchange venue to query. Available: {', '.join(venues_list)}",
+                                "enum": venues_list
+                            },
+                            "instrument": {
+                                "type": "string",
+                                "description": "Trading pair symbol (e.g., BTCUSDT)",
+                                "examples": ["BTCUSDT", "ETHUSDT"]
+                            },
+                            "interval": {
+                                "type": "string",
+                                "description": "Kline interval (e.g., 1m, 5m, 1h, 1d)",
+                                "examples": ["1m", "5m", "15m", "1h", "4h", "1d"]
+                            },
+                            "limit": {
+                                "type": "integer",
+                                "description": "Number of klines to return (default: 500)",
+                                "default": 500
+                            }
+                        }
+                    }
+                ),
             ]
 
-            tools.extend(unified_tools)
-            logger.info(f"Returning {len(tools)} tools to client ({len(unified_tools)} unified)")
-            return tools
+            logger.info(f"Returning {len(unified_tools)} unified tools (provider-specific tools hidden)")
+            return unified_tools
 
         @self.server.call_tool()
         async def call_tool(name: str, arguments: dict):
-            """Proxy tool calls to the appropriate provider with unified tool support."""
+            """Handle tool calls - ONLY unified tools are accepted (FR-001, FR-002, FR-007)."""
             logger.info(f"Tool called: {name} with arguments: {arguments}")
 
             try:
@@ -166,9 +211,40 @@ class ChatGPTMCPServer:
                 import uuid
                 correlation_id = str(uuid.uuid4())
 
-                # T021: Check if this is a unified tool (FR-028)
+                # FR-001, FR-002: Check if this is a unified tool
                 is_unified_tool = name.startswith("market.") or name.startswith("trade.")
 
+                # FR-007: Reject provider-specific tool calls with helpful error
+                if not is_unified_tool:
+                    # This is a provider-specific tool - reject it
+                    error_msg = f"Tool '{name}' is not available. This gateway only exposes unified tools."
+
+                    # Suggest the unified alternative
+                    suggestion = None
+                    if "get_ticker" in name:
+                        suggestion = "market.get_ticker"
+                    elif "orderbook_l1" in name:
+                        suggestion = "market.get_orderbook_l1"
+                    elif "orderbook_l2" in name:
+                        suggestion = "market.get_orderbook_l2"
+                    elif "get_klines" in name:
+                        suggestion = "market.get_klines"
+
+                    if suggestion:
+                        error_msg += f" Use '{suggestion}' with a 'venue' parameter instead."
+
+                    logger.warning(f"Rejected provider-specific tool call: {name}")
+                    return [TextContent(
+                        type="text",
+                        text=json.dumps({
+                            "error": error_msg,
+                            "error_code": "TOOL_NOT_AVAILABLE",
+                            "unified_alternative": suggestion,
+                            "available_venues": list(self.provider_clients.keys())
+                        }, indent=2)
+                    )]
+
+                # Handle unified tool calls
                 if is_unified_tool and self.unified_router:
                     # Route through UnifiedToolRouter (T021, FR-028)
                     logger.info(f"Routing unified tool {name} through UnifiedToolRouter")
@@ -211,6 +287,22 @@ class ChatGPTMCPServer:
                                     text=json.dumps({"result": normalized}, indent=2)
                                 )]
 
+                            elif name == "market.get_orderbook_l2":
+                                normalized = self.schema_adapter.normalize(
+                                    venue=venue,
+                                    data_type="orderbook_l2",
+                                    raw_response=raw_response,
+                                    additional_fields={"latency_ms": result.get("routing_info", {}).get("latency_ms")}
+                                )
+                                return [TextContent(
+                                    type="text",
+                                    text=json.dumps({"result": normalized}, indent=2)
+                                )]
+
+                            elif name == "market.get_klines":
+                                # Klines don't need normalization yet - just add venue and latency
+                                pass
+
                         # Return result as-is if no normalization needed
                         return [TextContent(
                             type="text",
@@ -240,83 +332,14 @@ class ChatGPTMCPServer:
                                 text=json.dumps({"error": error_msg}, indent=2)
                             )]
 
-                else:
-                    # Provider-specific tool (FR-010: normalize provider-specific tools too)
-                    # FR-047: Determine which provider owns this tool by parsing the tool name
-                    provider_name = None
-                    if "." in name:
-                        provider_name = name.split(".")[0]
-                    else:
-                        # Fallback: search through all providers for this tool
-                        for tool in self.provider_tools:
-                            if tool["name"] == name:
-                                if "provider" in tool:
-                                    provider_name = tool["provider"]
-                                break
-
-                    # Find the client for this provider
-                    client = None
-                    if provider_name and provider_name in self.provider_clients:
-                        client = self.provider_clients[provider_name]
-                    elif len(self.provider_clients) == 1:
-                        client = list(self.provider_clients.values())[0]
-                        logger.warning(f"Tool {name} has no provider prefix, using default provider")
-                    else:
-                        raise ValueError(f"Cannot determine provider for tool {name}")
-
-                    if not client:
-                        raise ValueError(f"Provider client not found for tool {name}")
-
-                    # Call the provider via gRPC
-                    import time
-                    start_time = time.time()
-                    result = await client.invoke(
-                        tool_name=name,
-                        payload=arguments,
-                        correlation_id=correlation_id,
-                        timeout=5.0
-                    )
-                    latency_ms = (time.time() - start_time) * 1000.0
-
-                    # FR-010: Apply schema normalization for provider-specific tools
-                    # Map tool names to data types for normalization
-                    tool_to_datatype = {
-                        "get_ticker": "ticker",
-                        "orderbook_l1": "orderbook_l1",
-                        "orderbook_l2": "orderbook_l2",
-                    }
-
-                    # Check if this tool supports normalization
-                    data_type = None
-                    for tool_suffix, dtype in tool_to_datatype.items():
-                        if name.endswith(tool_suffix):
-                            data_type = dtype
-                            break
-
-                    # Apply normalization if supported
-                    if data_type and provider_name and "result" in result:
-                        if self.schema_adapter.is_supported(provider_name, data_type):
-                            try:
-                                normalized = self.schema_adapter.normalize(
-                                    venue=provider_name,
-                                    data_type=data_type,
-                                    raw_response=result["result"],
-                                    additional_fields={"latency_ms": latency_ms}
-                                )
-                                logger.info(f"Normalized provider-specific tool {name} response")
-                                return [TextContent(
-                                    type="text",
-                                    text=json.dumps({"result": normalized}, indent=2)
-                                )]
-                            except Exception as e:
-                                logger.warning(f"Failed to normalize {name}: {e}, returning raw response")
-                                # Fall through to return raw response
-
-                    # Return raw response if normalization not supported or failed
-                    return [TextContent(
-                        type="text",
-                        text=json.dumps(result, indent=2)
-                    )]
+                # FR-001, FR-002: This point should never be reached since we reject non-unified tools earlier
+                # If we somehow get here with a non-unified tool, return an error
+                error_msg = f"Internal error: unified tool check failed for '{name}'"
+                logger.error(error_msg)
+                return [TextContent(
+                    type="text",
+                    text=json.dumps({"error": error_msg}, indent=2)
+                )]
 
             except Exception as e:
                 error_msg = f"Tool execution failed: {e}"
