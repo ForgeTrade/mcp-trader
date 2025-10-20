@@ -1,0 +1,186 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Binance Provider Response Schemas",
+  "description": "Schema registry documenting Binance-specific response formats for normalization",
+  "version": "1.0.0",
+  "provider": "binance",
+
+  "schemas": {
+    "ticker": {
+      "description": "Binance 24hr ticker response format",
+      "type": "object",
+      "required": ["symbol", "bidPrice", "askPrice", "lastPrice", "volume", "priceChangePercent"],
+      "properties": {
+        "symbol": {
+          "type": "string",
+          "description": "Trading pair symbol",
+          "examples": ["BTCUSDT", "ETHUSDT"]
+        },
+        "bidPrice": {
+          "type": "string",
+          "description": "Best bid price (string format)",
+          "examples": ["43250.50"]
+        },
+        "askPrice": {
+          "type": "string",
+          "description": "Best ask price (string format)",
+          "examples": ["43251.00"]
+        },
+        "lastPrice": {
+          "type": "string",
+          "description": "Last trade price",
+          "examples": ["43250.75"]
+        },
+        "volume": {
+          "type": "string",
+          "description": "24h trading volume",
+          "examples": ["12345.67"]
+        },
+        "quoteVolume": {
+          "type": "string",
+          "description": "24h quote asset volume",
+          "examples": ["534567890.12"]
+        },
+        "priceChangePercent": {
+          "type": "string",
+          "description": "24h price change percentage",
+          "examples": ["2.45", "-1.23"]
+        },
+        "openTime": {
+          "type": "integer",
+          "description": "Ticker window open time (milliseconds)",
+          "examples": [1697000000000]
+        },
+        "closeTime": {
+          "type": "integer",
+          "description": "Ticker window close time (milliseconds)",
+          "examples": [1697086400000]
+        }
+      },
+      "normalization": {
+        "target": "unified.market_ticker",
+        "mappings": {
+          "bid": "parseFloat(bidPrice)",
+          "ask": "parseFloat(askPrice)",
+          "mid": "(parseFloat(bidPrice) + parseFloat(askPrice)) / 2",
+          "spread_bps": "((parseFloat(askPrice) - parseFloat(bidPrice)) / mid) * 10000",
+          "volume": "parseFloat(volume)",
+          "timestamp": "closeTime",
+          "venue": "'binance'"
+        }
+      }
+    },
+
+    "orderbook_l1": {
+      "description": "Binance top-of-book orderbook response format",
+      "type": "object",
+      "required": ["lastUpdateId", "bids", "asks"],
+      "properties": {
+        "lastUpdateId": {
+          "type": "integer",
+          "description": "Last update ID for orderbook",
+          "examples": [123456789]
+        },
+        "bids": {
+          "type": "array",
+          "description": "Bid levels [price, quantity]",
+          "items": {
+            "type": "array",
+            "items": [
+              {"type": "string", "description": "Price"},
+              {"type": "string", "description": "Quantity"}
+            ]
+          },
+          "examples": [[["43250.50", "1.234"], ["43250.00", "2.456"]]]
+        },
+        "asks": {
+          "type": "array",
+          "description": "Ask levels [price, quantity]",
+          "items": {
+            "type": "array",
+            "items": [
+              {"type": "string", "description": "Price"},
+              {"type": "string", "description": "Quantity"}
+            ]
+          },
+          "examples": [[["43251.00", "0.987"], ["43251.50", "1.543"]]]
+        }
+      },
+      "normalization": {
+        "target": "unified.market_orderbook_l1",
+        "mappings": {
+          "bid_price": "parseFloat(bids[0][0])",
+          "bid_quantity": "parseFloat(bids[0][1])",
+          "ask_price": "parseFloat(asks[0][0])",
+          "ask_quantity": "parseFloat(asks[0][1])",
+          "mid": "(parseFloat(bids[0][0]) + parseFloat(asks[0][0])) / 2",
+          "spread_bps": "((parseFloat(asks[0][0]) - parseFloat(bids[0][0])) / mid) * 10000",
+          "venue": "'binance'"
+        }
+      }
+    },
+
+    "orderbook_l2": {
+      "description": "Binance full orderbook response format (L2 depth)",
+      "type": "object",
+      "required": ["lastUpdateId", "bids", "asks"],
+      "properties": {
+        "lastUpdateId": {
+          "type": "integer",
+          "description": "Last update ID for orderbook"
+        },
+        "bids": {
+          "type": "array",
+          "description": "Array of bid levels [price, quantity]",
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2
+          }
+        },
+        "asks": {
+          "type": "array",
+          "description": "Array of ask levels [price, quantity]",
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2
+          }
+        }
+      },
+      "normalization": {
+        "target": "unified.market_orderbook_l2",
+        "note": "Requires transformation of [price, qty] arrays to {price, quantity} objects"
+      }
+    },
+
+    "klines": {
+      "description": "Binance candlestick/kline data response format",
+      "type": "array",
+      "items": {
+        "type": "array",
+        "description": "[openTime, open, high, low, close, volume, closeTime, quoteVolume, trades, takerBuyBase, takerBuyQuote, ignore]",
+        "minItems": 12,
+        "maxItems": 12,
+        "items": [
+          {"type": "integer", "description": "Open time (ms)"},
+          {"type": "string", "description": "Open price"},
+          {"type": "string", "description": "High price"},
+          {"type": "string", "description": "Low price"},
+          {"type": "string", "description": "Close price"},
+          {"type": "string", "description": "Volume"},
+          {"type": "integer", "description": "Close time (ms)"},
+          {"type": "string", "description": "Quote asset volume"},
+          {"type": "integer", "description": "Number of trades"},
+          {"type": "string", "description": "Taker buy base volume"},
+          {"type": "string", "description": "Taker buy quote volume"},
+          {"type": "string", "description": "Ignore"}
+        ]
+      },
+      "normalization": {
+        "target": "unified.market_klines",
+        "note": "Requires array-to-object transformation with OHLCV structure"
+      }
+    }
+  }
+}

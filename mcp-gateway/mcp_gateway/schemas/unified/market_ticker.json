@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forgetrade.com/schemas/unified/market_ticker.json",
+  "title": "Unified Market Ticker",
+  "description": "Normalized ticker data across all exchanges (FR-008)",
+  "type": "object",
+  "required": ["mid", "spread_bps", "bid", "ask", "volume", "timestamp", "venue"],
+  "properties": {
+    "mid": {
+      "type": "number",
+      "description": "Mid-price calculated as (bid + ask) / 2",
+      "examples": [43250.75],
+      "minimum": 0
+    },
+    "spread_bps": {
+      "type": "number",
+      "description": "Bid-ask spread in basis points: ((ask - bid) / mid) * 10000",
+      "examples": [1.15, 2.5],
+      "minimum": 0
+    },
+    "bid": {
+      "type": "number",
+      "description": "Best bid price",
+      "examples": [43250.50],
+      "minimum": 0
+    },
+    "ask": {
+      "type": "number",
+      "description": "Best ask price",
+      "examples": [43251.00],
+      "minimum": 0
+    },
+    "last": {
+      "type": "number",
+      "description": "Last trade price (optional)",
+      "examples": [43250.75],
+      "minimum": 0
+    },
+    "volume": {
+      "type": "number",
+      "description": "24-hour trading volume in base asset",
+      "examples": [12345.67],
+      "minimum": 0
+    },
+    "quote_volume": {
+      "type": "number",
+      "description": "24-hour trading volume in quote asset (optional)",
+      "examples": [534567890.12],
+      "minimum": 0
+    },
+    "price_change_percent": {
+      "type": "number",
+      "description": "24-hour price change percentage (optional)",
+      "examples": [2.45, -1.23]
+    },
+    "timestamp": {
+      "type": "integer",
+      "description": "Exchange timestamp in milliseconds since epoch",
+      "examples": [1697048400000],
+      "minimum": 0
+    },
+    "venue": {
+      "type": "string",
+      "description": "Exchange/venue identifier",
+      "examples": ["binance", "okx", "coinbase"],
+      "minLength": 1
+    },
+    "latency_ms": {
+      "type": "number",
+      "description": "Gateway-to-provider request latency in milliseconds",
+      "examples": [12.5, 45.2],
+      "minimum": 0
+    },
+    "instrument": {
+      "type": "string",
+      "description": "Canonical instrument identifier (optional, for cross-exchange normalization)",
+      "examples": ["BTC/USDT", "ETH/USDT"]
+    },
+    "venue_symbol": {
+      "type": "string",
+      "description": "Original venue-specific symbol",
+      "examples": ["BTCUSDT", "BTC-USDT", "BTC-USD"]
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "mid": 43250.75,
+      "spread_bps": 1.15,
+      "bid": 43250.50,
+      "ask": 43251.00,
+      "last": 43250.75,
+      "volume": 12345.67,
+      "quote_volume": 534567890.12,
+      "price_change_percent": 2.45,
+      "timestamp": 1697048400000,
+      "venue": "binance",
+      "latency_ms": 12.5,
+      "venue_symbol": "BTCUSDT"
+    }
+  ]
+}
