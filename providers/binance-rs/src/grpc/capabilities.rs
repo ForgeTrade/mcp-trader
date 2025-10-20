@@ -70,7 +70,7 @@ impl CapabilityBuilder {
     "symbol": {
       "type": "string",
       "description": "Trading pair symbol (e.g., BTCUSDT)",
-      "pattern": "^[A-Z0-9]{6,12}$"
+      "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)*$"
     }
   },
   "required": ["symbol"],
@@ -92,7 +92,7 @@ impl CapabilityBuilder {
     "symbol": {
       "type": "string",
       "description": "Trading pair symbol (e.g., BTCUSDT)",
-      "pattern": "^[A-Z0-9]{6,12}$"
+      "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)*$"
     },
     "limit": {
       "type": "integer",
@@ -120,7 +120,7 @@ impl CapabilityBuilder {
     "symbol": {
       "type": "string",
       "description": "Trading pair symbol (e.g., BTCUSDT)",
-      "pattern": "^[A-Z0-9]{6,12}$"
+      "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)*$"
     },
     "limit": {
       "type": "integer",
@@ -148,7 +148,7 @@ impl CapabilityBuilder {
     "symbol": {
       "type": "string",
       "description": "Trading pair symbol (e.g., BTCUSDT)",
-      "pattern": "^[A-Z0-9]{6,12}$"
+      "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)*$"
     },
     "interval": {
       "type": "string",
@@ -189,7 +189,7 @@ impl CapabilityBuilder {
     "symbol": {
       "type": "string",
       "description": "Trading pair symbol (optional, omit for all symbols)",
-      "pattern": "^[A-Z0-9]{6,12}$"
+      "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)*$"
     }
   },
   "additionalProperties": false
@@ -210,7 +210,7 @@ impl CapabilityBuilder {
     "symbol": {
       "type": "string",
       "description": "Trading pair symbol (e.g., BTCUSDT)",
-      "pattern": "^[A-Z0-9]{6,12}$"
+      "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)*$"
     }
   },
   "required": ["symbol"],
@@ -252,7 +252,7 @@ impl CapabilityBuilder {
     "symbol": {
       "type": "string",
       "description": "Trading pair symbol (e.g., BTCUSDT)",
-      "pattern": "^[A-Z0-9]{6,12}$"
+      "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)*$"
     },
     "limit": {
       "type": "integer",
@@ -288,7 +288,7 @@ impl CapabilityBuilder {
     "symbol": {
       "type": "string",
       "description": "Trading pair symbol (e.g., BTCUSDT)",
-      "pattern": "^[A-Z0-9]{6,12}$"
+      "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)*$"
     },
     "side": {
       "type": "string",
@@ -466,7 +466,7 @@ impl CapabilityBuilder {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
-    "symbol": {"type": "string", "pattern": "^[A-Z]+$", "description": "Trading pair (e.g., BTCUSDT)"},
+    "symbol": {"type": "string", "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)*$", "description": "Trading pair (e.g., BTCUSDT, BTC-USDT)"},
     "window_duration_secs": {"type": "integer", "minimum": 10, "maximum": 300, "default": 60, "description": "Analysis window in seconds"}
   },
   "required": ["symbol"],
@@ -480,7 +480,7 @@ impl CapabilityBuilder {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
-    "symbol": {"type": "string", "pattern": "^[A-Z]+$", "description": "Trading pair"},
+    "symbol": {"type": "string", "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)*$", "description": "Trading pair"},
     "duration_hours": {"type": "integer", "minimum": 1, "maximum": 168, "default": 24, "description": "Time period in hours"},
     "tick_size": {"type": "number", "description": "Optional bin size"}
   },
@@ -495,7 +495,7 @@ impl CapabilityBuilder {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
-    "symbol": {"type": "string", "pattern": "^[A-Z]+$", "description": "Trading pair"}
+    "symbol": {"type": "string", "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)*$", "description": "Trading pair"}
   },
   "required": ["symbol"],
   "additionalProperties": false
@@ -508,7 +508,7 @@ impl CapabilityBuilder {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
-    "symbol": {"type": "string", "pattern": "^[A-Z]+$", "description": "Trading pair"}
+    "symbol": {"type": "string", "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)*$", "description": "Trading pair"}
   },
   "required": ["symbol"],
   "additionalProperties": false
@@ -521,7 +521,7 @@ impl CapabilityBuilder {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
-    "symbol": {"type": "string", "pattern": "^[A-Z]+$", "description": "Trading pair"},
+    "symbol": {"type": "string", "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)*$", "description": "Trading pair"},
     "duration_hours": {"type": "integer", "minimum": 1, "maximum": 168, "default": 24, "description": "Lookback period in hours"}
   },
   "required": ["symbol"],

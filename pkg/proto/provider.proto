@@ -36,6 +36,10 @@ message Tool {
   string description = 2;
   Json input_schema = 3;        // JSON Schema 2020-12
   Json output_schema = 4;       // Optional output schema
+  repeated string tags = 5;     // Tool categorization tags (FR-011, D-002)
+  bool auth_required = 6;       // Whether tool requires authentication (FR-011, D-002)
+  string stability = 7;         // "stable", "beta", "experimental" (FR-011, D-002)
+  string rate_limit_group = 8;  // Rate limit group identifier (FR-011, D-002)
 }
 
 // Resource definition

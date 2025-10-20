@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forgetrade.com/schemas/unified/market_orderbook_l1.json",
+  "title": "Unified Market Orderbook L1",
+  "description": "Normalized top-of-book (level 1) orderbook data across all exchanges (FR-009)",
+  "type": "object",
+  "required": ["bid_price", "bid_quantity", "ask_price", "ask_quantity", "mid", "spread_bps", "timestamp", "venue"],
+  "properties": {
+    "bid_price": {
+      "type": "number",
+      "description": "Best bid price",
+      "examples": [43250.50],
+      "minimum": 0
+    },
+    "bid_quantity": {
+      "type": "number",
+      "description": "Quantity available at best bid price",
+      "examples": [1.234],
+      "minimum": 0
+    },
+    "ask_price": {
+      "type": "number",
+      "description": "Best ask price",
+      "examples": [43251.00],
+      "minimum": 0
+    },
+    "ask_quantity": {
+      "type": "number",
+      "description": "Quantity available at best ask price",
+      "examples": [0.987],
+      "minimum": 0
+    },
+    "mid": {
+      "type": "number",
+      "description": "Mid-price calculated as (bid_price + ask_price) / 2",
+      "examples": [43250.75],
+      "minimum": 0
+    },
+    "spread_bps": {
+      "type": "number",
+      "description": "Bid-ask spread in basis points: ((ask_price - bid_price) / mid) * 10000",
+      "examples": [1.15, 2.5],
+      "minimum": 0
+    },
+    "spread_absolute": {
+      "type": "number",
+      "description": "Absolute spread (ask_price - bid_price), optional",
+      "examples": [0.50],
+      "minimum": 0
+    },
+    "imbalance_ratio": {
+      "type": "number",
+      "description": "Order imbalance ratio: bid_quantity / (bid_quantity + ask_quantity), optional",
+      "examples": [0.55, 0.45],
+      "minimum": 0,
+      "maximum": 1
+    },
+    "timestamp": {
+      "type": "integer",
+      "description": "Exchange timestamp in milliseconds since epoch",
+      "examples": [1697048400000],
+      "minimum": 0
+    },
+    "venue": {
+      "type": "string",
+      "description": "Exchange/venue identifier",
+      "examples": ["binance", "okx", "coinbase"],
+      "minLength": 1
+    },
+    "latency_ms": {
+      "type": "number",
+      "description": "Gateway-to-provider request latency in milliseconds",
+      "examples": [12.5, 45.2],
+      "minimum": 0
+    },
+    "instrument": {
+      "type": "string",
+      "description": "Canonical instrument identifier (optional, for cross-exchange normalization)",
+      "examples": ["BTC/USDT", "ETH/USDT"]
+    },
+    "venue_symbol": {
+      "type": "string",
+      "description": "Original venue-specific symbol",
+      "examples": ["BTCUSDT", "BTC-USDT", "BTC-USD"]
+    },
+    "update_id": {
+      "type": "integer",
+      "description": "Orderbook update ID from exchange (optional, for tracking updates)",
+      "examples": [123456789],
+      "minimum": 0
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "bid_price": 43250.50,
+      "bid_quantity": 1.234,
+      "ask_price": 43251.00,
+      "ask_quantity": 0.987,
+      "mid": 43250.75,
+      "spread_bps": 1.15,
+      "spread_absolute": 0.50,
+      "imbalance_ratio": 0.55,
+      "timestamp": 1697048400000,
+      "venue": "binance",
+      "latency_ms": 8.3,
+      "venue_symbol": "BTCUSDT",
+      "update_id": 123456789
+    }
+  ]
+}

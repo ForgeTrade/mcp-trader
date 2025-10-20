@@ -24,7 +24,10 @@ for arg in "$@"; do
 done
 
 # Get script directory and load common functions
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Compute paths directly to avoid command substitution issues
+SCRIPT_DIR="${BASH_SOURCE[0]%/*}"
+[[ "$SCRIPT_DIR" = "${BASH_SOURCE[0]}" ]] && SCRIPT_DIR="."
+SCRIPT_DIR="$(cd "$SCRIPT_DIR" 2>/dev/null && pwd -P | tr -d '\n' | head -c 1000)" || SCRIPT_DIR="."
 source "$SCRIPT_DIR/common.sh"
 
 # Get all paths and variables from common functions

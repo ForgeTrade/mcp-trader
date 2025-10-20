@@ -15,6 +15,8 @@ from starlette.routing import Route, Mount
 from starlette.responses import Response
 
 from mcp_gateway.adapters.grpc_client import ProviderGRPCClient
+from mcp_gateway.adapters.unified_router import UnifiedToolRouter
+from mcp_gateway.adapters.schema_adapter import SchemaAdapter
 from mcp_gateway.providers_registry import ProviderRegistry
 
 # Configure logging
@@ -42,31 +44,49 @@ class ChatGPTMCPServer:
         self.config_path = config_path
         self.base_url = base_url
         self.registry = ProviderRegistry()
-        self.grpc_client: ProviderGRPCClient | None = None
+        # FR-047: Support multiple providers instead of hardcoding Binance
+        self.provider_clients: dict[str, ProviderGRPCClient] = {}  # provider_name -> client
         self.provider_tools: list[dict] = []  # Will be populated during initialize()
+        # T020, T021: Unified tool routing and schema normalization
+        self.unified_router: UnifiedToolRouter | None = None
+        self.schema_adapter = SchemaAdapter()
         self.server = Server("chatgpt-mcp-gateway")
 
     async def initialize(self):
-        """Initialize the server and connect to Binance provider."""
+        """Initialize the server and connect to all providers."""
         logger.info("Initializing ChatGPT MCP Server...")
 
-        # Load providers (we only need the Binance provider)
+        # FR-047: Load ALL providers dynamically instead of hardcoding Binance
         providers = self.registry.load_providers(self.config_path)
         logger.info(f"Loaded {len(providers)} providers from {self.config_path}")
 
-        # Find Binance provider
-        binance_provider = next((p for p in providers if "binance" in p.name.lower()), None)
-        if not binance_provider:
-            raise ValueError("Binance provider not found in configuration")
+        if not providers:
+            raise ValueError("No providers found in configuration")
 
-        # Create gRPC client for Binance provider
-        self.grpc_client = ProviderGRPCClient(binance_provider.name, binance_provider.address)
-        logger.info(f"Connected to Binance provider at {binance_provider.address}")
+        # Create gRPC clients for all providers and fetch their capabilities
+        all_tools = []
+        for provider in providers:
+            try:
+                # Create gRPC client for this provider
+                client = ProviderGRPCClient(provider.name, provider.address)
+                self.provider_clients[provider.name] = client
+                logger.info(f"Connected to {provider.name} provider at {provider.address}")
 
-        # Fetch all available tools from the Binance provider
-        capabilities = await self.grpc_client.list_capabilities()
-        self.provider_tools = capabilities.get("tools", [])
-        logger.info(f"Loaded {len(self.provider_tools)} tools from Binance provider")
+                # Fetch available tools from this provider
+                capabilities = await client.list_capabilities()
+                tools = capabilities.get("tools", [])
+                logger.info(f"Loaded {len(tools)} tools from {provider.name} provider")
+                all_tools.extend(tools)
+            except Exception as e:
+                logger.error(f"Failed to connect to {provider.name} provider: {e}")
+                # Continue with other providers instead of failing completely
+
+        self.provider_tools = all_tools
+        logger.info(f"Total tools loaded from all providers: {len(self.provider_tools)}")
+
+        # T020, T021: Initialize unified tool router
+        self.unified_router = UnifiedToolRouter(self.provider_clients)
+        logger.info("UnifiedToolRouter initialized")
 
         # Register tool handlers
         self._register_handlers()
@@ -76,7 +96,7 @@ class ChatGPTMCPServer:
 
         @self.server.list_tools()
         async def list_tools():
-            """List all available tools from Binance provider."""
+            """List all available tools including unified tools (FR-001, FR-002)."""
             # Convert provider tools to MCP Tool objects
             tools = []
             for tool_dict in self.provider_tools:
@@ -86,12 +106,59 @@ class ChatGPTMCPServer:
                     inputSchema=tool_dict.get("input_schema", {}),
                 ))
 
-            logger.info(f"Returning {len(tools)} tools to client")
+            # T020: Add unified tools (FR-001, FR-002)
+            venues_list = list(self.provider_clients.keys())
+
+            unified_tools = [
+                Tool(
+                    name="market.get_ticker",
+                    description=f"Get normalized ticker data (bid, ask, mid, spread_bps) for any venue. Available venues: {venues_list}",
+                    inputSchema={
+                        "type": "object",
+                        "required": ["venue", "instrument"],
+                        "properties": {
+                            "venue": {
+                                "type": "string",
+                                "description": f"Exchange venue to query. Available: {', '.join(venues_list)}",
+                                "enum": venues_list
+                            },
+                            "instrument": {
+                                "type": "string",
+                                "description": "Trading pair symbol (e.g., BTCUSDT)",
+                                "examples": ["BTCUSDT", "ETHUSDT"]
+                            }
+                        }
+                    }
+                ),
+                Tool(
+                    name="market.get_orderbook_l1",
+                    description=f"Get normalized top-of-book orderbook (L1) for any venue. Available venues: {venues_list}",
+                    inputSchema={
+                        "type": "object",
+                        "required": ["venue", "instrument"],
+                        "properties": {
+                            "venue": {
+                                "type": "string",
+                                "description": f"Exchange venue to query. Available: {', '.join(venues_list)}",
+                                "enum": venues_list
+                            },
+                            "instrument": {
+                                "type": "string",
+                                "description": "Trading pair symbol (e.g., BTCUSDT)",
+                                "examples": ["BTCUSDT", "ETHUSDT"]
+                            }
+                        }
+                    }
+                ),
+            ]
+
+            tools.extend(unified_tools)
+            logger.info(f"Returning {len(tools)} tools to client ({len(unified_tools)} unified)")
             return tools
 
         @self.server.call_tool()
         async def call_tool(name: str, arguments: dict):
-            """Proxy tool calls directly to the Binance provider."""
+            """Proxy tool calls to the appropriate provider with unified tool support."""
             logger.info(f"Tool called: {name} with arguments: {arguments}")
 
             try:
@@ -99,19 +166,119 @@ class ChatGPTMCPServer:
                 import uuid
                 correlation_id = str(uuid.uuid4())
 
-                # Call the Binance provider directly via gRPC
-                result = await self.grpc_client.invoke(
-                    tool_name=name,
-                    payload=arguments,
-                    correlation_id=correlation_id,
-                    timeout=5.0  # 5 second timeout for tool calls
-                )
+                # T021: Check if this is a unified tool (FR-028)
+                is_unified_tool = name.startswith("market.") or name.startswith("trade.")
 
-                # Return result as MCP content array
-                return [TextContent(
-                    type="text",
-                    text=json.dumps(result, indent=2)
-                )]
+                if is_unified_tool and self.unified_router:
+                    # Route through UnifiedToolRouter (T021, FR-028)
+                    logger.info(f"Routing unified tool {name} through UnifiedToolRouter")
+
+                    try:
+                        result = await self.unified_router.route_tool_call(
+                            unified_tool_name=name,
+                            arguments=arguments,
+                            correlation_id=correlation_id,
+                            timeout=5.0
+                        )
+
+                        # Extract venue and raw result
+                        venue = arguments.get("venue")
+                        if "result" in result:
+                            raw_response = result["result"]
+
+                            # T021: Apply schema normalization based on tool type (FR-007)
+                            if name == "market.get_ticker":
+                                normalized = self.schema_adapter.normalize(
+                                    venue=venue,
+                                    data_type="ticker",
+                                    raw_response=raw_response,
+                                    additional_fields={"latency_ms": result.get("routing_info", {}).get("latency_ms")}
+                                )
+                                return [TextContent(
+                                    type="text",
+                                    text=json.dumps({"result": normalized}, indent=2)
+                                )]
+
+                            elif name == "market.get_orderbook_l1":
+                                normalized = self.schema_adapter.normalize(
+                                    venue=venue,
+                                    data_type="orderbook_l1",
+                                    raw_response=raw_response,
+                                    additional_fields={"latency_ms": result.get("routing_info", {}).get("latency_ms")}
+                                )
+                                return [TextContent(
+                                    type="text",
+                                    text=json.dumps({"result": normalized}, indent=2)
+                                )]
+
+                        # Return result as-is if no normalization needed
+                        return [TextContent(
+                            type="text",
+                            text=json.dumps(result, indent=2)
+                        )]
+
+                    except ValueError as ve:
+                        # T022: Enhanced error handling for non-existent instruments (US1 Scenario 4)
+                        error_msg = str(ve)
+                        logger.warning(f"Unified tool error: {error_msg}")
+
+                        # If error mentions missing symbol/instrument, provide alternatives
+                        if "symbol" in error_msg.lower() or "instrument" in error_msg.lower():
+                            alternatives = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT"]
+                            return [TextContent(
+                                type="text",
+                                text=json.dumps({
+                                    "error": error_msg,
+                                    "error_code": "SYMBOL_NOT_FOUND",
+                                    "alternatives": alternatives,
+                                    "venue": arguments.get("venue")
+                                }, indent=2)
+                            )]
+                        else:
+                            return [TextContent(
+                                type="text",
+                                text=json.dumps({"error": error_msg}, indent=2)
+                            )]
+
+                else:
+                    # Provider-specific tool (original behavior)
+                    # FR-047: Determine which provider owns this tool by parsing the tool name
+                    provider_name = None
+                    if "." in name:
+                        provider_name = name.split(".")[0]
+                    else:
+                        # Fallback: search through all providers for this tool
+                        for tool in self.provider_tools:
+                            if tool["name"] == name:
+                                if "provider" in tool:
+                                    provider_name = tool["provider"]
+                                break
+
+                    # Find the client for this provider
+                    client = None
+                    if provider_name and provider_name in self.provider_clients:
+                        client = self.provider_clients[provider_name]
+                    elif len(self.provider_clients) == 1:
+                        client = list(self.provider_clients.values())[0]
+                        logger.warning(f"Tool {name} has no provider prefix, using default provider")
+                    else:
+                        raise ValueError(f"Cannot determine provider for tool {name}")
+
+                    if not client:
+                        raise ValueError(f"Provider client not found for tool {name}")
+
+                    # Call the provider via gRPC
+                    result = await client.invoke(
+                        tool_name=name,
+                        payload=arguments,
+                        correlation_id=correlation_id,
+                        timeout=5.0
+                    )
+
+                    return [TextContent(
+                        type="text",
+                        text=json.dumps(result, indent=2)
+                    )]
 
             except Exception as e:
                 error_msg = f"Tool execution failed: {e}"
