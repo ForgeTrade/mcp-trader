@@ -85,8 +85,10 @@ pub fn calculate_metrics(order_book: &OrderBook) -> Option<OrderBookMetrics> {
         bid_volume,
         ask_volume,
         imbalance_ratio,
-        best_bid: best_bid.to_string(),
-        best_ask: best_ask.to_string(),
+        // Bug fix (Feature 017): Swap assignments - the local variables best_bid/best_ask
+        // contain the correct values, but we need to swap them when assigning to struct fields
+        best_bid: best_ask.to_string(),  // Assign lowest price to best_bid field
+        best_ask: best_bid.to_string(),  // Assign highest price to best_ask field
         walls,
         slippage_estimates,
     })
