@@ -15,9 +15,9 @@ logger = logging.getLogger(__name__)
 
 
 # Feature 014: Venue name mapping (FR-004, FR-005, FR-006)
-# Maps public-facing venue names to internal provider IDs
+# Maps public-facing venue names to provider IDs (and tool prefixes)
 VENUE_MAPPING: Dict[str, str] = {
-    "binance": "binance-rs",  # Public name → Internal provider ID
+    "binance": "binance",  # Public name → Provider ID (which matches tool prefix)
 }
 
 # Feature 014: List of public venue names (FR-004, FR-010)

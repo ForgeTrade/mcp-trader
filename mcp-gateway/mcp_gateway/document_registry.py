@@ -52,28 +52,29 @@ class DocumentRegistry:
     """
 
     # Mapping of document types to Binance tool names
+    # FR-046: Use dot notation (binance.get_*) to match capability tool names
     DOC_TYPE_TO_TOOL = {
-        "ticker": "binance_get_ticker",
-        "orderbook": "binance_orderbook_l2",  # Full orderbook
-        "orderbook_l1": "binance_orderbook_l1",
-        "orderbook_l2": "binance_orderbook_l2",
-        "klines": "binance_get_klines",
-        "trades": "binance_get_recent_trades",
-        "volume_profile": "binance_get_volume_profile",
-        "orderbook_health": "binance_orderbook_health",
-        "liquidity_vacuums": "binance_detect_liquidity_vacuums",
-        "market_anomalies": "binance_detect_market_anomalies",
-        "microstructure_health": "binance_get_microstructure_health",
+        "ticker": "binance.get_ticker",
+        "orderbook": "binance.orderbook_l2",  # Full orderbook
+        "orderbook_l1": "binance.orderbook_l1",
+        "orderbook_l2": "binance.orderbook_l2",
+        "klines": "binance.get_klines",
+        "trades": "binance.get_recent_trades",
+        "volume_profile": "binance.get_volume_profile",
+        "orderbook_health": "binance.orderbook_health",
+        "liquidity_vacuums": "binance.detect_liquidity_vacuums",
+        "market_anomalies": "binance.detect_market_anomalies",
+        "microstructure_health": "binance.get_microstructure_health",
     }
 
     # Analytics type mapping
     ANALYTICS_TO_TOOL = {
-        "order_flow": "binance_get_volume_profile",  # Uses volume profile
-        "volume_profile": "binance_get_volume_profile",
-        "orderbook_health": "binance_orderbook_health",
-        "liquidity_vacuums": "binance_detect_liquidity_vacuums",
-        "market_anomalies": "binance_detect_market_anomalies",
-        "microstructure": "binance_get_microstructure_health",
+        "order_flow": "binance.get_volume_profile",  # Uses volume profile
+        "volume_profile": "binance.get_volume_profile",
+        "orderbook_health": "binance.orderbook_health",
+        "liquidity_vacuums": "binance.detect_liquidity_vacuums",
+        "market_anomalies": "binance.detect_market_anomalies",
+        "microstructure": "binance.get_microstructure_health",
     }
 
     # Common trading symbols (for search suggestions)

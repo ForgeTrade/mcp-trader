@@ -5,6 +5,7 @@ Implements connection pooling and fail-fast timeout strategy.
 import grpc.aio
 import json
 import logging
+import time
 from typing import Dict, List, Any, Optional
 from google.protobuf import empty_pb2
 
@@ -32,6 +33,11 @@ class ProviderGRPCClient:
         self.address = address
         self.channels: List[grpc.aio.Channel] = []
         self.current_idx = 0
+
+        # Health check state (T011)
+        self._is_healthy = True
+        self._last_health_check: Optional[float] = None
+        self._consecutive_failures = 0
 
         # Create channel pool with unique IDs
         for i in range(num_channels):
@@ -222,6 +228,53 @@ class ProviderGRPCClient:
         except grpc.RpcError as e:
             logger.error(f"gRPC error getting prompt {prompt_name} from {self.provider_name}: {e.code()} - {e.details()}")
             raise
+
+    async def health_check(self, timeout: float = 1.0) -> bool:
+        """
+        Perform health check on provider by calling ListCapabilities.
+
+        Args:
+            timeout: Health check timeout in seconds (default: 1.0s)
+
+        Returns:
+            True if provider is healthy, False otherwise
+        """
+        try:
+            await self.list_capabilities(timeout=timeout)
+            self._is_healthy = True
+            self._consecutive_failures = 0
+            self._last_health_check = time.time()
+            logger.debug(f"Health check passed for provider {self.provider_name}")
+            return True
+        except Exception as e:
+            self._consecutive_failures += 1
+            self._is_healthy = False
+            self._last_health_check = time.time()
+            logger.warning(
+                f"Health check failed for provider {self.provider_name} "
+                f"(consecutive failures: {self._consecutive_failures}): {e}"
+            )
+            return False
+
+    def is_healthy(self) -> bool:
+        """Check if provider is currently marked as healthy."""
+        return self._is_healthy
+
+    def get_health_status(self) -> Dict[str, Any]:
+        """
+        Get detailed health status information.
+
+        Returns:
+            Dictionary with health status details
+        """
+        return {
+            "provider": self.provider_name,
+            "address": self.address,
+            "healthy": self._is_healthy,
+            "last_check": self._last_health_check,
+            "consecutive_failures": self._consecutive_failures,
+            "channels": len(self.channels),
+        }
 
     async def close(self):
         """Close all channels in the pool."""

@@ -15,7 +15,7 @@ providers:
       version: "1.0.0"
       environment: development
 
-  - name: binance-rs
+  - name: binance
     type: grpc
     address: localhost:50053
     enabled: true
