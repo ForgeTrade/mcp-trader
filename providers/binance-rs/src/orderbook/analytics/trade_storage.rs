@@ -94,12 +94,18 @@ impl TradeStorage {
         }
 
         let prefix = format!("{}{}:", TRADES_KEY_PREFIX, symbol);
+        tracing::info!(
+            "Querying trades: symbol={} prefix='{}' start_time={} end_time={} window_hours={}",
+            symbol, prefix, start_time, end_time, window_hours
+        );
         let mut all_trades = Vec::new();
 
         let iter = self.db.prefix_iterator(prefix.as_bytes());
+        let mut key_count = 0;
 
         for item in iter {
             let (key, value) = item.context("Failed to read from RocksDB iterator")?;
+            key_count += 1;
 
             // Parse timestamp from key (format: "trades:SYMBOL:TIMESTAMP")
             if let Some(timestamp) = parse_timestamp_from_key(&key) {
@@ -118,6 +124,10 @@ impl TradeStorage {
             }
         }
 
+        tracing::info!(
+            "Query complete: found {} trades from {} keys for symbol={}",
+            all_trades.len(), key_count, symbol
+        );
         Ok(all_trades)
     }
 
