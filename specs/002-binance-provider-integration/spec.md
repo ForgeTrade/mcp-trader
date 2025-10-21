@@ -3,7 +3,7 @@
 **Feature Branch**: `002-binance-provider-integration`
 **Created**: 2025-10-18
 **Status**: Draft
-**Input**: User description: "а теперь интегрируй нового провайдера, используй вот этот mcp /home/limerc/repos/ForgeTrade/mcp-binance-rs и нужно превратить его в нашего провайдера"
+**Input**: User description: "а теперь интегрируй нового провайдера, используй вот этот mcp /home/limerc/repos/ForgeQuant/mcp-binance-rs и нужно превратить его в нашего провайдера"
 
 ## Overview
 

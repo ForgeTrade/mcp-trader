@@ -1,4 +1,4 @@
-module github.com/forgetrade/mcp-trader/providers/hello-go
+module github.com/forgequant/mcp-trader/providers/hello-go
 
 go 1.24.0
 

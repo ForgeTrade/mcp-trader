@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	pb "github.com/forgetrade/mcp-trader/providers/hello-go/internal/pb"
+	pb "github.com/forgequant/mcp-trader/providers/hello-go/internal/pb"
 )
 
 const ProviderVersion = "0.1.0"

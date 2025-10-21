@@ -68,7 +68,7 @@
 ### 1. Clone and Navigate
 
 ```bash
-cd /home/limerc/repos/ForgeTrade/mcp-trader
+cd /home/limerc/repos/ForgeQuant/mcp-trader
 git checkout 002-binance-provider-integration
 ```
 
@@ -448,7 +448,7 @@ After completing this quickstart:
 - **Binance API Documentation**: https://binance-docs.github.io/apidocs/spot/en/
 - **Tonic Documentation**: https://github.com/hyperium/tonic
 - **MCP Specification**: https://modelcontextprotocol.io/
-- **Project Issues**: https://github.com/ForgeTrade/mcp-trader/issues
+- **Project Issues**: https://github.com/ForgeQuant/mcp-gateway/issues
 
 ---
 

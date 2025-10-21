@@ -21,8 +21,8 @@
 
 **References**:
 - Tonic documentation: https://github.com/hyperium/tonic
-- Provider.proto contract: `/home/limerc/repos/ForgeTrade/mcp-trader/pkg/proto/provider.proto`
-- hello-go provider pattern: `/home/limerc/repos/ForgeTrade/mcp-trader/providers/hello-go/`
+- Provider.proto contract: `/home/limerc/repos/ForgeQuant/mcp-trader/pkg/proto/provider.proto`
+- hello-go provider pattern: `/home/limerc/repos/ForgeQuant/mcp-trader/providers/hello-go/`
 
 ---
 

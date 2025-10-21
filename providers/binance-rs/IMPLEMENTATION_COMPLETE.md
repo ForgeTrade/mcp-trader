@@ -421,7 +421,7 @@ The system can be deployed and used immediately for cryptocurrency trading analy
 
 ---
 
-**Repository:** `/home/limerc/repos/ForgeTrade/mcp-trader/providers/binance-rs`  
+**Repository:** `/home/limerc/repos/ForgeQuant/mcp-trader/providers/binance-rs`  
 **Branch:** `003-specify-scripts-bash`  
 **Ready for:** Integration testing, staging deployment  
 **Contact:** See INTEGRATION.md for setup instructions

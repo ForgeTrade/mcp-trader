@@ -9,7 +9,7 @@
 The Binance provider implements the shared `provider.proto` contract located at:
 
 ```
-/home/limerc/repos/ForgeTrade/mcp-trader/pkg/proto/provider.proto
+/home/limerc/repos/ForgeQuant/mcp-trader/pkg/proto/provider.proto
 ```
 
 This contract is shared across all providers in the MCP Gateway system (hello-go, binance-rs, future providers).

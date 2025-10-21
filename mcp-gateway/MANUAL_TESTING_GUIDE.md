@@ -46,7 +46,7 @@ It does NOT run as an HTTP server - that's what our Binance provider's HTTP tran
 ### Option 1: Test with MCP stdio Protocol
 
 ```bash
-cd /home/limerc/repos/ForgeTrade/mcp-trader/mcp-gateway
+cd /home/limerc/repos/ForgeQuant/mcp-trader/mcp-gateway
 
 # Start gateway and send JSON-RPC request
 echo '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}' | uv run python -m mcp_gateway.main
@@ -98,7 +98,7 @@ uv run python -m mcp_gateway.main
       "args": [
         "run",
         "--directory",
-        "/home/limerc/repos/ForgeTrade/mcp-trader/mcp-gateway",
+        "/home/limerc/repos/ForgeQuant/mcp-trader/mcp-gateway",
         "python",
         "-m",
         "mcp_gateway.main"
@@ -129,7 +129,7 @@ async def main():
         args=[
             "run",
             "--directory",
-            "/home/limerc/repos/ForgeTrade/mcp-trader/mcp-gateway",
+            "/home/limerc/repos/ForgeQuant/mcp-trader/mcp-gateway",
             "python",
             "-m",
             "mcp_gateway.main"
@@ -195,7 +195,7 @@ grpcurl -plaintext localhost:50053 provider.v1.Provider/ListCapabilities
 **Cause:** Provider not running  
 **Solution:** 
 ```bash
-cd /home/limerc/repos/ForgeTrade/mcp-trader/providers/binance-rs
+cd /home/limerc/repos/ForgeQuant/mcp-trader/providers/binance-rs
 RUST_LOG=info ./target/release/binance-provider --grpc --port 50053 &
 ```
 
@@ -207,11 +207,11 @@ RUST_LOG=info ./target/release/binance-provider --grpc --port 50053 &
 
 ```bash
 # 1. Ensure provider is running
-cd /home/limerc/repos/ForgeTrade/mcp-trader/providers/binance-rs
+cd /home/limerc/repos/ForgeQuant/mcp-trader/providers/binance-rs
 RUST_LOG=info ./target/release/binance-provider --grpc --port 50053 > /tmp/provider.log 2>&1 &
 
 # 2. Test gateway connection
-cd /home/limerc/repos/ForgeTrade/mcp-trader/mcp-gateway
+cd /home/limerc/repos/ForgeQuant/mcp-trader/mcp-gateway
 echo '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}' | uv run python -m mcp_gateway.main 2>&1 | jq '.'
 
 # 3. List all tools

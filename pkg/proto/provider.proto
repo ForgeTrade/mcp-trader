@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package provider.v1;
 
-option go_package = "github.com/forgetrade/mcp-trader/providers/hello-go/internal/pb";
+option go_package = "github.com/forgequant/mcp-trader/providers/hello-go/internal/pb";
 
 import "google/protobuf/empty.proto";
 

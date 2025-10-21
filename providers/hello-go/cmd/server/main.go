@@ -8,8 +8,8 @@ import (
 	"os"
 	"path/filepath"
 
-	pb "github.com/forgetrade/mcp-trader/providers/hello-go/internal/pb"
-	"github.com/forgetrade/mcp-trader/providers/hello-go/internal/server"
+	pb "github.com/forgequant/mcp-trader/providers/hello-go/internal/pb"
+	"github.com/forgequant/mcp-trader/providers/hello-go/internal/server"
 	"google.golang.org/grpc"
 )
 

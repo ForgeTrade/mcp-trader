@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/forgetrade/mcp-trader/providers/hello-go/internal/capabilities"
-	pb "github.com/forgetrade/mcp-trader/providers/hello-go/internal/pb"
-	"github.com/forgetrade/mcp-trader/providers/hello-go/internal/tools"
+	"github.com/forgequant/mcp-trader/providers/hello-go/internal/capabilities"
+	pb "github.com/forgequant/mcp-trader/providers/hello-go/internal/pb"
+	"github.com/forgequant/mcp-trader/providers/hello-go/internal/tools"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
