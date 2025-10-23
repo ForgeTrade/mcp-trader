@@ -93,7 +93,7 @@ fn parse_args(args: &[String]) -> (String, u16) {
 
 /// Print usage information
 fn print_usage() {
-    println!("Binance Provider - MCP server for Binance cryptocurrency trading");
+    println!("Binance Provider - MCP server for Binance cryptocurrency market data analysis");
     println!();
     println!("USAGE:");
     println!("    binance-provider [OPTIONS]");
@@ -108,8 +108,8 @@ fn print_usage() {
     println!("    --help, -h          Print this help message");
     println!();
     println!("ENVIRONMENT VARIABLES:");
-    println!("    BINANCE_API_KEY       Binance API key (required for authenticated operations)");
-    println!("    BINANCE_API_SECRET    Binance API secret (required for authenticated operations)");
+    println!("    BINANCE_API_KEY       Binance API key (optional, preserved for future use)");
+    println!("    BINANCE_API_SECRET    Binance API secret (optional, preserved for future use)");
     println!("    BINANCE_BASE_URL      Binance API base URL (default: https://api.binance.com)");
     println!("    ANALYTICS_DATA_PATH   Analytics storage path (default: ./data/analytics)");
     println!("    RUST_LOG              Logging level (default: info)");
@@ -141,28 +141,21 @@ async fn run_grpc_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("Starting gRPC server on {}", addr);
     tracing::info!("Provider capabilities:");
 
-    #[cfg(feature = "orderbook_analytics")]
+    #[cfg(feature = "orderbook")]
     {
-        tracing::info!("  - 21 tools (16 base + 5 analytics):");
-        tracing::info!("    * Market data: ticker, orderbook, trades, klines, exchange_info, avg_price");
-        tracing::info!("    * Account: get_account, get_my_trades");
-        tracing::info!("    * Orders: place, cancel, get, get_open, get_all");
-        tracing::info!("    * OrderBook: L1 metrics, L2 depth, health");
-        tracing::info!("    * Analytics: order_flow, volume_profile, anomalies, health, liquidity_vacuums");
-    }
-
-    #[cfg(all(feature = "orderbook", not(feature = "orderbook_analytics")))]
-    {
-        tracing::info!("  - 16 tools (market data, account, orders, orderbook L1/L2)");
+        tracing::info!("  - 1 tool (unified market data report):");
+        tracing::info!("    * generate_market_report - Comprehensive market intelligence");
+        tracing::info!("      Consolidates: price, orderbook, liquidity, volume profile,");
+        tracing::info!("      order flow, anomalies, and market health into single report");
     }
 
     #[cfg(not(feature = "orderbook"))]
     {
-        tracing::info!("  - 13 tools (market data, account, orders)");
+        tracing::info!("  - 0 tools (orderbook feature required for generate_market_report)");
     }
 
-    tracing::info!("  - 4 resources (market, balances, trades, orders)");
-    tracing::info!("  - 2 prompts (trading-analysis, portfolio-risk)");
+    tracing::info!("  - 1 resource (market data)");
+    tracing::info!("  - 1 prompt (trading-analysis)");
 
     // Check for API credentials
     match (
@@ -333,6 +326,7 @@ async fn run_http_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
             Some(provider.orderbook_manager),
             Some(provider.analytics_storage),
             Some(provider.trade_storage),
+            Some(provider.report_generator),
         )
         .await?;
     }
@@ -344,6 +338,7 @@ async fn run_http_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
             port,
             provider.binance_client,
             Some(provider.orderbook_manager),
+            Some(provider.report_generator),
         )
         .await?;
     }

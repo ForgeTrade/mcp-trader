@@ -33,6 +33,7 @@ class MCPGateway:
         self.clients: Dict[str, ProviderGRPCClient] = {}
         self.config_path = config_path
         self.tool_provider_map: Dict[str, str] = {}  # tool_name -> provider_name
+        self.venue_provider_map: Dict[str, str] = {}  # venue -> provider_name (for unified tool routing)
 
     async def initialize(self):
         """Initialize gateway by discovering providers and their capabilities."""
@@ -63,6 +64,13 @@ class MCPGateway:
                     tool_name = tool["name"]
                     self.tool_provider_map[tool_name] = provider_name
 
+                # Build venue -> provider mapping for unified tool routing
+                # Extract venue from provider name (e.g., "binance-provider" -> "binance")
+                # This supports multi-venue deployments
+                venue = provider_name.split("-")[0] if "-" in provider_name else provider_name
+                self.venue_provider_map[venue.lower()] = provider_name
+                logger.info(f"Registered venue '{venue}' -> provider '{provider_name}'")
+
                 logger.info(
                     f"Provider {provider_name}: "
                     f"{len(capabilities.get('tools', []))} tools, "
@@ -73,25 +81,77 @@ class MCPGateway:
                 logger.error(f"Failed to discover capabilities from {provider_name}: {e}")
 
     def get_all_tools(self) -> list[Tool]:
-        """Get all tools from all providers as MCP Tool objects."""
+        """
+        Get all tools from all providers as MCP Tool objects.
+        Feature 018 - FR-002: ONLY expose the unified market report tool.
+        """
         tools = []
         all_capabilities = self.registry.get_all_capabilities()
 
         for provider_name, capabilities in all_capabilities.items():
             for tool_def in capabilities.get("tools", []):
-                # Create MCP Tool object
+                # Feature 018 - FR-002: Only allow generate_market_report tool
+                tool_name = tool_def["name"]
+
+                # Skip all tools except generate_market_report (per FR-002)
+                if not tool_name.endswith("generate_market_report"):
+                    logger.debug(f"Skipping tool {tool_name} per FR-002 (not generate_market_report)")
+                    continue
+
+                # Create MCP Tool object for the unified report tool
+                # Expose as market.generate_report (unified name)
                 tool = Tool(
-                    name=tool_def["name"],
-                    description=tool_def.get("description", ""),
-                    inputSchema=tool_def.get("input_schema", {}),
+                    name="market.generate_report",
+                    description="Generate comprehensive market intelligence report combining price, orderbook, liquidity, volume profile, order flow, anomalies, and market health into single markdown document.",
+                    inputSchema={
+                        "type": "object",
+                        "required": ["instrument"],
+                        "properties": {
+                            "venue": {
+                                "type": "string",
+                                "description": "Exchange venue (optional, default: binance)",
+                                "default": "binance"
+                            },
+                            "instrument": {
+                                "type": "string",
+                                "description": "Trading pair symbol (e.g., BTCUSDT)"
+                            },
+                            "options": {
+                                "type": "object",
+                                "description": "Report generation options (optional)",
+                                "properties": {
+                                    "include_sections": {
+                                        "type": "array",
+                                        "items": {"type": "string"}
+                                    },
+                                    "volume_window_hours": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 168,
+                                        "default": 24
+                                    },
+                                    "orderbook_levels": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 100,
+                                        "default": 20
+                                    }
+                                }
+                            }
+                        }
+                    }
                 )
                 tools.append(tool)
+                # Map the unified tool name to the provider tool
+                self.tool_provider_map["market.generate_report"] = provider_name
 
+        logger.info(f"Returning {len(tools)} tool(s) per FR-002: {[t.name for t in tools]}")
         return tools
 
     async def invoke_tool(self, tool_name: str, arguments: Dict[str, Any]) -> list[TextContent]:
         """
         Invoke a tool by routing to the appropriate provider.
+        Feature 018 - FR-002: Only market.generate_report is accepted.
 
         Args:
             tool_name: Name of the tool to invoke
@@ -103,36 +163,61 @@ class MCPGateway:
         # Generate correlation ID for tracing
         correlation_id = str(uuid.uuid4())
 
-        # Find provider for this tool
-        provider_name = self.tool_provider_map.get(tool_name)
+        # Feature 018 - FR-002: Only accept market.generate_report
+        if tool_name != "market.generate_report":
+            error_msg = f"Tool '{tool_name}' is not available. Only 'market.generate_report' is exposed (Feature 018 - FR-002)."
+            logger.warning(error_msg)
+            import json
+            return [TextContent(type="text", text=json.dumps({
+                "error": error_msg,
+                "error_code": "TOOL_NOT_AVAILABLE",
+                "available_tool": "market.generate_report"
+            }, indent=2))]
+
+        # P0 Fix: Honor venue parameter to route to correct provider
+        # Extract venue from arguments (default to "binance")
+        venue = arguments.get("venue", "binance").lower()
+
+        # Find provider for this venue
+        provider_name = self.venue_provider_map.get(venue)
         if not provider_name:
-            error_msg = f"Tool not found: {tool_name}"
+            available_venues = list(self.venue_provider_map.keys())
+            error_msg = f"Venue '{venue}' not found. Available venues: {available_venues}"
             logger.error(error_msg)
-            return [TextContent(type="text", text=error_msg)]
+            import json
+            return [TextContent(type="text", text=json.dumps({
+                "error": error_msg,
+                "error_code": "VENUE_NOT_FOUND",
+                "available_venues": available_venues
+            }, indent=2))]
 
-        # Get the tool's input schema for validation
+        # Get the provider's actual tool name (binance.generate_market_report)
         capabilities = self.registry.get_cached_capabilities(provider_name)
-        tool_def = next((t for t in capabilities["tools"] if t["name"] == tool_name), None)
+        provider_tool_name = None
+        for tool_def in capabilities.get("tools", []):
+            if tool_def["name"].endswith("generate_market_report"):
+                provider_tool_name = tool_def["name"]
+                break
 
-        if not tool_def:
-            error_msg = f"Tool definition not found: {tool_name}"
+        if not provider_tool_name:
+            error_msg = f"Provider tool generate_market_report not found in {provider_name}"
             logger.error(error_msg)
             return [TextContent(type="text", text=error_msg)]
 
-        # Validate input arguments against schema
-        input_schema = tool_def.get("input_schema")
-        if input_schema:
-            try:
-                self.validator.validate(input_schema, arguments)
-            except Exception as e:
-                error_msg = f"Input validation failed for {tool_name}: {e}"
-                logger.error(error_msg)
-                return [TextContent(type="text", text=error_msg)]
+        # Map 'instrument' to 'symbol' if needed
+        provider_arguments = arguments.copy()
+        if "instrument" in provider_arguments:
+            provider_arguments["symbol"] = provider_arguments.pop("instrument")
+
+        # Remove 'venue' parameter as it's already used for routing
+        provider_arguments.pop("venue", None)
+
+        logger.info(f"Routing {tool_name} for venue '{venue}' to provider '{provider_name}' (tool: {provider_tool_name}) with args: {provider_arguments}")
 
         # Invoke the tool on the provider
         client = self.clients[provider_name]
         try:
-            response = await client.invoke(tool_name, arguments, correlation_id)
+            response = await client.invoke(provider_tool_name, provider_arguments, correlation_id)
 
             if "error" in response:
                 error_msg = f"Tool invocation failed: {response['error']}"
@@ -147,7 +232,8 @@ class MCPGateway:
         except Exception as e:
             error_msg = f"Failed to invoke tool {tool_name} on provider {provider_name}: {e}"
             logger.error(error_msg)
-            return [TextContent(type="text", text=error_msg)]
+            import json
+            return [TextContent(type="text", text=json.dumps({"error": error_msg}, indent=2))]
 
     async def shutdown(self):
         """Shutdown gateway and close all provider connections."""

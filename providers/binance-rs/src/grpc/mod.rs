@@ -1,6 +1,8 @@
 use crate::binance::client::BinanceClient;
 use crate::error::Result;
 use crate::pb::{provider_server::Provider, *};
+#[cfg(feature = "orderbook")]
+use crate::report::ReportGenerator;
 use tonic::{Request, Response, Status};
 
 #[cfg(feature = "orderbook")]
@@ -32,6 +34,10 @@ pub struct BinanceProviderServer {
     /// Trade persistence storage (optional, enabled with orderbook_analytics feature)
     #[cfg(feature = "orderbook_analytics")]
     pub trade_storage: Arc<crate::orderbook::analytics::TradeStorage>,
+
+    /// Market data report generator
+    #[cfg(feature = "orderbook")]
+    pub report_generator: Arc<ReportGenerator>,
 }
 
 impl BinanceProviderServer {
@@ -64,11 +70,21 @@ impl BinanceProviderServer {
 
             tracing::info!("Trade persistence storage initialized (shared RocksDB)");
 
+            // Initialize ReportGenerator
+            let report_generator = Arc::new(ReportGenerator::new(
+                Arc::new(binance_client.clone()),
+                orderbook_manager.clone(),
+                60, // 60 second cache TTL
+            ));
+
+            tracing::info!("Market data report generator initialized");
+
             Ok(Self {
                 binance_client,
                 orderbook_manager,
                 analytics_storage,
                 trade_storage,
+                report_generator,
             })
         }
 
@@ -77,9 +93,19 @@ impl BinanceProviderServer {
             tracing::info!("OrderBook feature enabled - initializing WebSocket manager");
             let orderbook_manager = Arc::new(OrderBookManager::new(Arc::new(binance_client.clone())));
 
+            // Initialize ReportGenerator
+            let report_generator = Arc::new(ReportGenerator::new(
+                Arc::new(binance_client.clone()),
+                orderbook_manager.clone(),
+                60, // 60 second cache TTL
+            ));
+
+            tracing::info!("Market data report generator initialized");
+
             Ok(Self {
                 binance_client,
                 orderbook_manager,
+                report_generator,
             })
         }
 
@@ -126,6 +152,7 @@ impl Provider for BinanceProviderServer {
             Some(self.orderbook_manager.clone()),
             Some(self.analytics_storage.clone()),
             Some(self.trade_storage.clone()),
+            Some(self.report_generator.clone()),
             &req
         ).await?;
 
@@ -135,12 +162,14 @@ impl Provider for BinanceProviderServer {
             Some(self.orderbook_manager.clone()),
             None,
             None,
+            Some(self.report_generator.clone()),
             &req
         ).await?;
 
         #[cfg(not(feature = "orderbook"))]
         let response = tools::route_tool(
             &self.binance_client,
+            None,
             None,
             None,
             None,

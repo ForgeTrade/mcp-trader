@@ -17,16 +17,8 @@ impl CapabilityBuilder {
             prompts: Vec::new(),
         };
 
-        // Add all tools
-        builder.add_market_data_tools();
-        builder.add_account_tools();
-        builder.add_order_tools();
-
-        #[cfg(feature = "orderbook")]
-        builder.add_orderbook_tools();
-
-        #[cfg(feature = "orderbook_analytics")]
-        builder.add_analytics_tools();
+        // Add ONLY the unified market data report tool (per FR-002)
+        builder.add_unified_report_tool();
 
         // Add resources
         builder.add_resources();
@@ -54,8 +46,63 @@ impl CapabilityBuilder {
         })
     }
 
-    // ========== Market Data Tools (Public, No Auth Required) ==========
+    // ========== Unified Market Data Report Tool (THE ONLY PUBLIC TOOL) ==========
+    // Per FR-002: All market data methods consolidated into single unified method
 
+    fn add_unified_report_tool(&mut self) {
+        #[cfg(feature = "orderbook")]
+        self.tools.push(Tool {
+            name: "binance.generate_market_report".to_string(),
+            description: "Generate comprehensive market intelligence report combining price, orderbook, volume, and analytics (THE ONLY PUBLIC TOOL - per FR-002)".to_string(),
+            input_schema: Self::json_schema(
+                r#"{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "symbol": {
+      "type": "string",
+      "description": "Trading pair symbol (e.g., BTCUSDT)",
+      "pattern": "^[A-Z0-9]{6,12}$"
+    },
+    "options": {
+      "type": "object",
+      "description": "Report generation options",
+      "properties": {
+        "include_sections": {
+          "type": "array",
+          "description": "Section names to include (omit for all sections)",
+          "items": {"type": "string"}
+        },
+        "volume_window_hours": {
+          "type": "integer",
+          "description": "Time window for volume profile (hours)",
+          "minimum": 1,
+          "maximum": 168,
+          "default": 24
+        },
+        "orderbook_levels": {
+          "type": "integer",
+          "description": "Number of orderbook levels for depth analysis",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": ["symbol"],
+  "additionalProperties": false
+}"#,
+            ),
+            output_schema: None,
+        });
+    }
+
+    // ========== DEPRECATED: Individual Market Data Tools (Removed per FR-002) ==========
+    // These methods are commented out as they've been consolidated into generate_market_report
+
+    #[allow(dead_code)]
     fn add_market_data_tools(&mut self) {
         // Tool 1: Get 24h ticker
         self.tools.push(Tool {
@@ -219,31 +266,12 @@ impl CapabilityBuilder {
             ),
             output_schema: None,
         });
-    }
 
-    // ========== Account Tools (Authenticated) ==========
-
-    fn add_account_tools(&mut self) {
-        // Tool 7: Get account information
+        // Tool 7: Generate unified market report (requires orderbook feature)
+        #[cfg(feature = "orderbook")]
         self.tools.push(Tool {
-            name: "binance.get_account".to_string(),
-            description: "Get current account information including balances (requires API key)"
-                .to_string(),
-            input_schema: Self::json_schema(
-                r#"{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "type": "object",
-  "properties": {},
-  "additionalProperties": false
-}"#,
-            ),
-            output_schema: None,
-        });
-
-        // Tool 8: Get my trades
-        self.tools.push(Tool {
-            name: "binance.get_my_trades".to_string(),
-            description: "Get account trade history for a symbol (requires API key)".to_string(),
+            name: "binance.generate_market_report".to_string(),
+            description: "Generate comprehensive market report combining price, orderbook, volume, and analytics".to_string(),
             input_schema: Self::json_schema(
                 r#"{
   "$schema": "http://json-schema.org/draft-07/schema#",
@@ -254,148 +282,42 @@ impl CapabilityBuilder {
       "description": "Trading pair symbol (e.g., BTCUSDT)",
       "pattern": "^[A-Z0-9]{6,12}$"
     },
-    "limit": {
-      "type": "integer",
-      "description": "Number of trades to return",
-      "minimum": 1,
-      "maximum": 1000,
-      "default": 500
-    },
-    "from_id": {
-      "type": "integer",
-      "description": "Trade ID to fetch from (optional)"
-    }
-  },
-  "required": ["symbol"],
-  "additionalProperties": false
-}"#,
-            ),
-            output_schema: None,
-        });
-    }
-
-    // ========== Order Management Tools (Authenticated) ==========
-
-    fn add_order_tools(&mut self) {
-        // Tool 9: Place order
-        self.tools.push(Tool {
-            name: "binance.place_order".to_string(),
-            description: "Create a new order (requires API key)".to_string(),
-            input_schema: Self::json_schema(r#"{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "type": "object",
-  "properties": {
-    "symbol": {
-      "type": "string",
-      "description": "Trading pair symbol (e.g., BTCUSDT)",
-      "pattern": "^[A-Z0-9]{6,12}$"
-    },
-    "side": {
-      "type": "string",
-      "description": "Order side",
-      "enum": ["BUY", "SELL"]
-    },
-    "order_type": {
-      "type": "string",
-      "description": "Order type",
-      "enum": ["LIMIT", "MARKET", "STOP_LOSS", "STOP_LOSS_LIMIT", "TAKE_PROFIT", "TAKE_PROFIT_LIMIT", "LIMIT_MAKER"]
-    },
-    "quantity": {
-      "type": "string",
-      "description": "Order quantity",
-      "pattern": "^[0-9]+(\\.[0-9]+)?$"
-    },
-    "price": {
-      "type": "string",
-      "description": "Order price (required for LIMIT orders)",
-      "pattern": "^[0-9]+(\\.[0-9]+)?$"
-    },
-    "time_in_force": {
-      "type": "string",
-      "description": "Time in force (required for LIMIT orders)",
-      "enum": ["GTC", "IOC", "FOK"]
-    },
-    "stop_price": {
-      "type": "string",
-      "description": "Stop price (required for STOP orders)",
-      "pattern": "^[0-9]+(\\.[0-9]+)?$"
-    }
-  },
-  "required": ["symbol", "side", "order_type", "quantity"],
-  "additionalProperties": false
-}"#),
-            output_schema: None,
-        });
-
-        // Remaining order tools...
-        let order_tools = vec![
-            (
-                "binance.cancel_order",
-                "Cancel an active order (requires API key)",
-                r#"{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "type": "object",
-  "properties": {
-    "symbol": {"type": "string", "pattern": "^[A-Z0-9]{6,12}$"},
-    "order_id": {"type": "integer"},
-    "orig_client_order_id": {"type": "string"}
-  },
-  "required": ["symbol"],
-  "additionalProperties": false
-}"#,
-            ),
-            (
-                "binance.get_order",
-                "Query order status (requires API key)",
-                r#"{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "type": "object",
-  "properties": {
-    "symbol": {"type": "string", "pattern": "^[A-Z0-9]{6,12}$"},
-    "order_id": {"type": "integer"},
-    "orig_client_order_id": {"type": "string"}
-  },
-  "required": ["symbol"],
-  "additionalProperties": false
-}"#,
-            ),
-            (
-                "binance.get_open_orders",
-                "Get all open orders (requires API key)",
-                r#"{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "type": "object",
-  "properties": {
-    "symbol": {"type": "string", "pattern": "^[A-Z0-9]{6,12}$"}
-  },
-  "additionalProperties": false
-}"#,
-            ),
-            (
-                "binance.get_all_orders",
-                "Get all orders for a symbol (requires API key)",
-                r#"{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "type": "object",
-  "properties": {
-    "symbol": {"type": "string", "pattern": "^[A-Z0-9]{6,12}$"},
-    "limit": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 500}
-  },
-  "required": ["symbol"],
-  "additionalProperties": false
-}"#,
-            ),
-        ];
-
-        for (name, desc, schema) in order_tools {
-            self.tools.push(Tool {
-                name: name.to_string(),
-                description: desc.to_string(),
-                input_schema: Self::json_schema(schema),
-                output_schema: None,
-            });
+    "options": {
+      "type": "object",
+      "description": "Report generation options",
+      "properties": {
+        "include_sections": {
+          "type": "array",
+          "description": "Section names to include (omit for all sections)",
+          "items": {"type": "string"}
+        },
+        "volume_window_hours": {
+          "type": "integer",
+          "description": "Time window for volume profile (hours)",
+          "minimum": 1,
+          "maximum": 168,
+          "default": 24
+        },
+        "orderbook_levels": {
+          "type": "integer",
+          "description": "Number of orderbook levels for depth analysis",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20
         }
+      },
+      "additionalProperties": false
     }
+  },
+  "required": ["symbol"],
+  "additionalProperties": false
+}"#,
+            ),
+            output_schema: None,
+        });
+    }
+
+
 
     // ========== OrderBook Analysis Tools (Feature-gated) ==========
 
@@ -573,20 +495,6 @@ impl CapabilityBuilder {
             ),
         });
 
-        self.prompts.push(Prompt {
-            name: "portfolio-risk".to_string(),
-            description: "Assess portfolio risk and suggest rebalancing strategies".to_string(),
-            args_schema: Self::json_schema(
-                r#"{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "type": "object",
-  "properties": {
-    "risk_tolerance": {"type": "string", "enum": ["low", "medium", "high"]}
-  },
-  "additionalProperties": false
-}"#,
-            ),
-        });
     }
 }
 

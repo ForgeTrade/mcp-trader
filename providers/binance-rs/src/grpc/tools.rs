@@ -34,49 +34,18 @@ pub async fn route_tool(
     trade_storage: Option<Arc<crate::orderbook::analytics::TradeStorage>>,
     #[cfg(not(feature = "orderbook_analytics"))]
     _trade_storage: Option<()>,
+    #[cfg(feature = "orderbook")]
+    report_generator: Option<Arc<crate::report::ReportGenerator>>,
+    #[cfg(not(feature = "orderbook"))]
+    _report_generator: Option<()>,
     request: &InvokeRequest,
 ) -> Result<InvokeResponse> {
     tracing::debug!("Routing tool: {}", request.tool_name);
 
     let result = match request.tool_name.as_str() {
-        // Market data tools (public, no auth)
-        "binance.get_ticker" => handle_get_ticker(client, request).await?,
-        "binance.get_orderbook" => handle_get_orderbook(client, request).await?,
-        "binance.get_recent_trades" => handle_get_recent_trades(client, request).await?,
-        "binance.get_klines" => handle_get_klines(client, request).await?,
-        "binance.get_exchange_info" => handle_get_exchange_info(client, request).await?,
-        "binance.get_avg_price" => handle_get_avg_price(client, request).await?,
-
-        // Account tools (authenticated)
-        "binance.get_account" => handle_get_account(client, request).await?,
-        "binance.get_my_trades" => handle_get_my_trades(client, request).await?,
-
-        // Order management tools (authenticated)
-        "binance.place_order" => handle_place_order(client, request).await?,
-        "binance.cancel_order" => handle_cancel_order(client, request).await?,
-        "binance.get_order" => handle_get_order(client, request).await?,
-        "binance.get_open_orders" => handle_get_open_orders(client, request).await?,
-        "binance.get_all_orders" => handle_get_all_orders(client, request).await?,
-
-        // OrderBook analysis tools (feature-gated)
+        // Unified market data report - THE ONLY PUBLIC TOOL (per FR-002)
         #[cfg(feature = "orderbook")]
-        "binance.orderbook_l1" => handle_orderbook_l1(orderbook_manager.as_ref(), request).await?,
-        #[cfg(feature = "orderbook")]
-        "binance.orderbook_l2" => handle_orderbook_l2(orderbook_manager.as_ref(), request).await?,
-        #[cfg(feature = "orderbook")]
-        "binance.orderbook_health" => handle_orderbook_health(orderbook_manager.as_ref(), request).await?,
-
-        // Advanced analytics tools (feature-gated)
-        #[cfg(feature = "orderbook_analytics")]
-        "binance.get_order_flow" => handle_get_order_flow(analytics_storage.as_ref(), request).await?,
-        #[cfg(feature = "orderbook_analytics")]
-        "binance.get_volume_profile" => handle_get_volume_profile(trade_storage.as_ref(), request).await?,
-        #[cfg(feature = "orderbook_analytics")]
-        "binance.detect_market_anomalies" => handle_detect_market_anomalies(analytics_storage.as_ref(), request).await?,
-        #[cfg(feature = "orderbook_analytics")]
-        "binance.get_microstructure_health" => handle_get_microstructure_health(analytics_storage.as_ref(), request).await?,
-        #[cfg(feature = "orderbook_analytics")]
-        "binance.get_liquidity_vacuums" => handle_get_liquidity_vacuums(analytics_storage.as_ref(), request).await?,
+        "binance.generate_market_report" => handle_generate_market_report(report_generator.as_ref(), request).await?,
 
         // Unknown tool
         _ => return Err(ProviderError::ToolNotFound(request.tool_name.clone())),
@@ -231,186 +200,6 @@ async fn handle_get_avg_price(client: &BinanceClient, request: &InvokeRequest) -
         "symbol": ticker.symbol,
         "price": ticker.price
     });
-
-    Ok(Json {
-        value: serde_json::to_string(&result)?.as_bytes().to_vec(),
-    })
-}
-
-// ========== Account Tool Handlers ==========
-
-async fn handle_get_account(client: &BinanceClient, _request: &InvokeRequest) -> Result<Json> {
-    tracing::info!("Getting account information");
-
-    // Call actual Binance API
-    let account = client
-        .get_account()
-        .await
-        .map_err(|e| ProviderError::BinanceApi(e.to_string()))?;
-
-    let result = serde_json::to_value(&account)?;
-
-    Ok(Json {
-        value: serde_json::to_string(&result)?.as_bytes().to_vec(),
-    })
-}
-
-async fn handle_get_my_trades(client: &BinanceClient, request: &InvokeRequest) -> Result<Json> {
-    let args = parse_json(&request.payload)?;
-    let symbol = args["symbol"]
-        .as_str()
-        .ok_or_else(|| ProviderError::Validation("Missing required field: symbol".to_string()))?;
-    let limit = args["limit"].as_u64().map(|l| l as u32);
-
-    tracing::info!(
-        "Getting my trades for symbol: {}, limit: {:?}",
-        symbol,
-        limit
-    );
-
-    // Call actual Binance API
-    let trades = client
-        .get_my_trades(symbol, limit)
-        .await
-        .map_err(|e| ProviderError::BinanceApi(e.to_string()))?;
-
-    let result = serde_json::to_value(&trades)?;
-
-    Ok(Json {
-        value: serde_json::to_string(&result)?.as_bytes().to_vec(),
-    })
-}
-
-// ========== Order Management Tool Handlers ==========
-
-async fn handle_place_order(client: &BinanceClient, request: &InvokeRequest) -> Result<Json> {
-    let args = parse_json(&request.payload)?;
-    let symbol = args["symbol"]
-        .as_str()
-        .ok_or_else(|| ProviderError::Validation("Missing required field: symbol".to_string()))?;
-    let side = args["side"]
-        .as_str()
-        .ok_or_else(|| ProviderError::Validation("Missing required field: side".to_string()))?;
-    let order_type = args["order_type"].as_str().ok_or_else(|| {
-        ProviderError::Validation("Missing required field: order_type".to_string())
-    })?;
-    let quantity = args["quantity"]
-        .as_str()
-        .ok_or_else(|| ProviderError::Validation("Missing required field: quantity".to_string()))?;
-
-    let price = args["price"].as_str();
-
-    tracing::info!(
-        "Placing order: symbol={}, side={}, type={}",
-        symbol,
-        side,
-        order_type
-    );
-
-    // Call actual Binance API
-    let order = client
-        .create_order(symbol, side, order_type, quantity, price)
-        .await
-        .map_err(|e| ProviderError::BinanceApi(e.to_string()))?;
-
-    let result = serde_json::to_value(&order)?;
-
-    Ok(Json {
-        value: serde_json::to_string(&result)?.as_bytes().to_vec(),
-    })
-}
-
-async fn handle_cancel_order(client: &BinanceClient, request: &InvokeRequest) -> Result<Json> {
-    let args = parse_json(&request.payload)?;
-    let symbol = args["symbol"]
-        .as_str()
-        .ok_or_else(|| ProviderError::Validation("Missing required field: symbol".to_string()))?;
-    let order_id = args["order_id"]
-        .as_i64()
-        .ok_or_else(|| ProviderError::Validation("Missing required field: order_id".to_string()))?;
-
-    tracing::info!("Canceling order: symbol={}, order_id={}", symbol, order_id);
-
-    // Call actual Binance API
-    let order = client
-        .cancel_order(symbol, order_id)
-        .await
-        .map_err(|e| ProviderError::BinanceApi(e.to_string()))?;
-
-    let result = serde_json::to_value(&order)?;
-
-    Ok(Json {
-        value: serde_json::to_string(&result)?.as_bytes().to_vec(),
-    })
-}
-
-async fn handle_get_order(client: &BinanceClient, request: &InvokeRequest) -> Result<Json> {
-    let args = parse_json(&request.payload)?;
-    let symbol = args["symbol"]
-        .as_str()
-        .ok_or_else(|| ProviderError::Validation("Missing required field: symbol".to_string()))?;
-    let order_id = args["order_id"]
-        .as_i64()
-        .ok_or_else(|| ProviderError::Validation("Missing required field: order_id".to_string()))?;
-
-    tracing::info!(
-        "Getting order status: symbol={}, order_id={}",
-        symbol,
-        order_id
-    );
-
-    // Call actual Binance API
-    let order = client
-        .query_order(symbol, order_id)
-        .await
-        .map_err(|e| ProviderError::BinanceApi(e.to_string()))?;
-
-    let result = serde_json::to_value(&order)?;
-
-    Ok(Json {
-        value: serde_json::to_string(&result)?.as_bytes().to_vec(),
-    })
-}
-
-async fn handle_get_open_orders(client: &BinanceClient, request: &InvokeRequest) -> Result<Json> {
-    let args = parse_json(&request.payload)?;
-    let symbol = args["symbol"].as_str();
-
-    tracing::info!("Getting open orders for symbol: {:?}", symbol);
-
-    // Call actual Binance API
-    let orders = client
-        .get_open_orders(symbol)
-        .await
-        .map_err(|e| ProviderError::BinanceApi(e.to_string()))?;
-
-    let result = serde_json::to_value(&orders)?;
-
-    Ok(Json {
-        value: serde_json::to_string(&result)?.as_bytes().to_vec(),
-    })
-}
-
-async fn handle_get_all_orders(client: &BinanceClient, request: &InvokeRequest) -> Result<Json> {
-    let args = parse_json(&request.payload)?;
-    let symbol = args["symbol"]
-        .as_str()
-        .ok_or_else(|| ProviderError::Validation("Missing required field: symbol".to_string()))?;
-    let limit = args["limit"].as_u64().map(|l| l as u32);
-
-    tracing::info!(
-        "Getting all orders for symbol: {}, limit: {:?}",
-        symbol,
-        limit
-    );
-
-    // Call actual Binance API
-    let orders = client
-        .get_all_orders(symbol, limit)
-        .await
-        .map_err(|e| ProviderError::BinanceApi(e.to_string()))?;
-
-    let result = serde_json::to_value(&orders)?;
 
     Ok(Json {
         value: serde_json::to_string(&result)?.as_bytes().to_vec(),
@@ -665,6 +454,43 @@ async fn handle_get_liquidity_vacuums(
         .map_err(|e| ProviderError::BinanceApi(e.to_string()))?;
 
     let result = serde_json::to_value(&vacuums)?;
+    Ok(Json {
+        value: serde_json::to_string(&result)?.as_bytes().to_vec(),
+    })
+}
+
+// ========== Market Data Report Handler ==========
+
+#[cfg(feature = "orderbook")]
+async fn handle_generate_market_report(
+    report_generator: Option<&Arc<crate::report::ReportGenerator>>,
+    request: &InvokeRequest,
+) -> Result<Json> {
+    let generator = report_generator
+        .ok_or_else(|| ProviderError::Validation("Report generator not initialized".to_string()))?;
+
+    let args = parse_json(&request.payload)?;
+    let symbol = args["symbol"]
+        .as_str()
+        .ok_or_else(|| ProviderError::Validation("Missing required field: symbol".to_string()))?;
+
+    tracing::info!("Generating market report for symbol: {}", symbol);
+
+    // Parse options if provided
+    let options = if let Some(opts) = args.get("options") {
+        serde_json::from_value(opts.clone())
+            .map_err(|e| ProviderError::Validation(format!("Invalid options: {}", e)))?
+    } else {
+        crate::report::ReportOptions::default()
+    };
+
+    // Generate report
+    let report = generator
+        .generate_report(symbol, options)
+        .await
+        .map_err(|e| ProviderError::BinanceApi(e))?;
+
+    let result = serde_json::to_value(&report)?;
     Ok(Json {
         value: serde_json::to_string(&result)?.as_bytes().to_vec(),
     })
