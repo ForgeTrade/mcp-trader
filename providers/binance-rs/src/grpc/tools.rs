@@ -22,22 +22,18 @@ fn parse_json(json_opt: &Option<Json>) -> Result<serde_json::Value> {
 /// Route tool invocation to appropriate handler
 pub async fn route_tool(
     client: &BinanceClient,
-    #[cfg(feature = "orderbook")]
-    orderbook_manager: Option<Arc<OrderBookManager>>,
-    #[cfg(not(feature = "orderbook"))]
-    _orderbook_manager: Option<()>,
-    #[cfg(feature = "orderbook_analytics")]
-    analytics_storage: Option<Arc<crate::orderbook::analytics::SnapshotStorage>>,
-    #[cfg(not(feature = "orderbook_analytics"))]
-    _analytics_storage: Option<()>,
-    #[cfg(feature = "orderbook_analytics")]
-    trade_storage: Option<Arc<crate::orderbook::analytics::TradeStorage>>,
-    #[cfg(not(feature = "orderbook_analytics"))]
-    _trade_storage: Option<()>,
-    #[cfg(feature = "orderbook")]
-    report_generator: Option<Arc<crate::report::ReportGenerator>>,
-    #[cfg(not(feature = "orderbook"))]
-    _report_generator: Option<()>,
+    #[cfg(feature = "orderbook")] orderbook_manager: Option<Arc<OrderBookManager>>,
+    #[cfg(not(feature = "orderbook"))] _orderbook_manager: Option<()>,
+    #[cfg(feature = "orderbook_analytics")] analytics_storage: Option<
+        Arc<crate::orderbook::analytics::SnapshotStorage>,
+    >,
+    #[cfg(not(feature = "orderbook_analytics"))] _analytics_storage: Option<()>,
+    #[cfg(feature = "orderbook_analytics")] trade_storage: Option<
+        Arc<crate::orderbook::analytics::TradeStorage>,
+    >,
+    #[cfg(not(feature = "orderbook_analytics"))] _trade_storage: Option<()>,
+    #[cfg(feature = "orderbook")] report_generator: Option<Arc<crate::report::ReportGenerator>>,
+    #[cfg(not(feature = "orderbook"))] _report_generator: Option<()>,
     request: &InvokeRequest,
 ) -> Result<InvokeResponse> {
     tracing::debug!("Routing tool: {}", request.tool_name);
@@ -45,7 +41,9 @@ pub async fn route_tool(
     let result = match request.tool_name.as_str() {
         // Unified market data report - THE ONLY PUBLIC TOOL (per FR-002)
         #[cfg(feature = "orderbook")]
-        "binance.generate_market_report" => handle_generate_market_report(report_generator.as_ref(), request).await?,
+        "binance.generate_market_report" => {
+            handle_generate_market_report(report_generator.as_ref(), request).await?
+        }
 
         // Unknown tool
         _ => return Err(ProviderError::ToolNotFound(request.tool_name.clone())),
@@ -216,8 +214,9 @@ async fn handle_orderbook_l1(
     use crate::orderbook::tools::{get_orderbook_metrics, GetOrderBookMetricsParams};
 
     // Check if manager is available
-    let manager = manager
-        .ok_or_else(|| ProviderError::Validation("OrderBook manager not initialized".to_string()))?;
+    let manager = manager.ok_or_else(|| {
+        ProviderError::Validation("OrderBook manager not initialized".to_string())
+    })?;
 
     // Parse parameters
     let args = parse_json(&request.payload)?;
@@ -246,8 +245,9 @@ async fn handle_orderbook_l2(
     use crate::orderbook::tools::{get_orderbook_depth, GetOrderBookDepthParams};
 
     // Check if manager is available
-    let manager = manager
-        .ok_or_else(|| ProviderError::Validation("OrderBook manager not initialized".to_string()))?;
+    let manager = manager.ok_or_else(|| {
+        ProviderError::Validation("OrderBook manager not initialized".to_string())
+    })?;
 
     // Parse parameters
     let args = parse_json(&request.payload)?;
@@ -276,8 +276,9 @@ async fn handle_orderbook_health(
     use crate::orderbook::tools::get_orderbook_health;
 
     // Check if manager is available
-    let manager = manager
-        .ok_or_else(|| ProviderError::Validation("OrderBook manager not initialized".to_string()))?;
+    let manager = manager.ok_or_else(|| {
+        ProviderError::Validation("OrderBook manager not initialized".to_string())
+    })?;
 
     tracing::info!("Getting orderbook health status");
 
@@ -303,16 +304,20 @@ async fn handle_get_order_flow(
     use crate::orderbook::analytics::tools::{get_order_flow, GetOrderFlowParams};
 
     // Check if storage is available
-    let storage = storage
-        .ok_or_else(|| ProviderError::Validation("Analytics storage not initialized".to_string()))?;
+    let storage = storage.ok_or_else(|| {
+        ProviderError::Validation("Analytics storage not initialized".to_string())
+    })?;
 
     // Parse parameters
     let args = parse_json(&request.payload)?;
     let params: GetOrderFlowParams = serde_json::from_value(args)
         .map_err(|e| ProviderError::Validation(format!("Invalid parameters: {}", e)))?;
 
-    tracing::info!("Getting order flow analysis for symbol: {} (window: {}s)",
-        params.symbol, params.window_duration_secs);
+    tracing::info!(
+        "Getting order flow analysis for symbol: {} (window: {}s)",
+        params.symbol,
+        params.window_duration_secs
+    );
 
     // Call analytics tool
     let snapshot = get_order_flow(storage.clone(), params)
@@ -341,8 +346,11 @@ async fn handle_get_volume_profile(
     let params: GetVolumeProfileParams = serde_json::from_value(args)
         .map_err(|e| ProviderError::Validation(format!("Invalid parameters: {}", e)))?;
 
-    tracing::info!("Getting volume profile for symbol: {} (duration: {}h)",
-        params.symbol, params.duration_hours);
+    tracing::info!(
+        "Getting volume profile for symbol: {} (duration: {}h)",
+        params.symbol,
+        params.duration_hours
+    );
 
     // Query trades from TradeStorage for the specified time window
     let end_time = chrono::Utc::now().timestamp_millis();
@@ -352,8 +360,12 @@ async fn handle_get_volume_profile(
         .query_trades(&params.symbol, start_time, end_time)
         .map_err(|e| ProviderError::BinanceApi(format!("Failed to query trades: {}", e)))?;
 
-    tracing::debug!("Queried {} trades for {} over {}h window",
-        trades.len(), params.symbol, params.duration_hours);
+    tracing::debug!(
+        "Queried {} trades for {} over {}h window",
+        trades.len(),
+        params.symbol,
+        params.duration_hours
+    );
 
     // Convert trade_storage::AggTrade to trade_stream::AggTrade
     let trades_for_profile: Vec<crate::orderbook::analytics::trade_stream::AggTrade> = trades
@@ -392,8 +404,9 @@ async fn handle_detect_market_anomalies(
 ) -> Result<Json> {
     use crate::orderbook::analytics::tools::detect_market_anomalies;
 
-    let storage = storage
-        .ok_or_else(|| ProviderError::Validation("Analytics storage not initialized".to_string()))?;
+    let storage = storage.ok_or_else(|| {
+        ProviderError::Validation("Analytics storage not initialized".to_string())
+    })?;
 
     let args = parse_json(&request.payload)?;
     let symbol = args["symbol"]
@@ -417,8 +430,9 @@ async fn handle_get_microstructure_health(
 ) -> Result<Json> {
     use crate::orderbook::analytics::tools::get_microstructure_health;
 
-    let storage = storage
-        .ok_or_else(|| ProviderError::Validation("Analytics storage not initialized".to_string()))?;
+    let storage = storage.ok_or_else(|| {
+        ProviderError::Validation("Analytics storage not initialized".to_string())
+    })?;
 
     let args = parse_json(&request.payload)?;
     let symbol = args["symbol"]
@@ -442,8 +456,9 @@ async fn handle_get_liquidity_vacuums(
 ) -> Result<Json> {
     use crate::orderbook::analytics::tools::{get_liquidity_vacuums, GetLiquidityVacuumsParams};
 
-    let storage = storage
-        .ok_or_else(|| ProviderError::Validation("Analytics storage not initialized".to_string()))?;
+    let storage = storage.ok_or_else(|| {
+        ProviderError::Validation("Analytics storage not initialized".to_string())
+    })?;
 
     let args = parse_json(&request.payload)?;
     let params: GetLiquidityVacuumsParams = serde_json::from_value(args)

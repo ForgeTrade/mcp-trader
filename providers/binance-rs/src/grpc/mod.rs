@@ -48,25 +48,28 @@ impl BinanceProviderServer {
         #[cfg(all(feature = "orderbook", feature = "orderbook_analytics"))]
         {
             tracing::info!("OrderBook feature enabled - initializing WebSocket manager");
-            let orderbook_manager = Arc::new(OrderBookManager::new(Arc::new(binance_client.clone())));
+            let orderbook_manager =
+                Arc::new(OrderBookManager::new(Arc::new(binance_client.clone())));
 
             tracing::info!("Analytics feature enabled - initializing RocksDB storage");
             let data_path = std::env::var("ANALYTICS_DATA_PATH")
                 .unwrap_or_else(|_| "./data/analytics".to_string());
 
             let analytics_storage = Arc::new(
-                crate::orderbook::analytics::SnapshotStorage::new(&data_path)
-                    .map_err(|e| crate::error::ProviderError::Initialization(
-                        format!("Failed to initialize analytics storage: {}", e)
-                    ))?
+                crate::orderbook::analytics::SnapshotStorage::new(&data_path).map_err(|e| {
+                    crate::error::ProviderError::Initialization(format!(
+                        "Failed to initialize analytics storage: {}",
+                        e
+                    ))
+                })?,
             );
 
             tracing::info!("Analytics storage initialized at: {}", data_path);
 
             // Initialize TradeStorage (shares same RocksDB as SnapshotStorage)
-            let trade_storage = Arc::new(
-                crate::orderbook::analytics::TradeStorage::new(analytics_storage.db())
-            );
+            let trade_storage = Arc::new(crate::orderbook::analytics::TradeStorage::new(
+                analytics_storage.db(),
+            ));
 
             tracing::info!("Trade persistence storage initialized (shared RocksDB)");
 
@@ -91,7 +94,8 @@ impl BinanceProviderServer {
         #[cfg(all(feature = "orderbook", not(feature = "orderbook_analytics")))]
         {
             tracing::info!("OrderBook feature enabled - initializing WebSocket manager");
-            let orderbook_manager = Arc::new(OrderBookManager::new(Arc::new(binance_client.clone())));
+            let orderbook_manager =
+                Arc::new(OrderBookManager::new(Arc::new(binance_client.clone())));
 
             // Initialize ReportGenerator
             let report_generator = Arc::new(ReportGenerator::new(
@@ -111,9 +115,7 @@ impl BinanceProviderServer {
 
         #[cfg(not(feature = "orderbook"))]
         {
-            Ok(Self {
-                binance_client,
-            })
+            Ok(Self { binance_client })
         }
     }
 }
@@ -153,8 +155,9 @@ impl Provider for BinanceProviderServer {
             Some(self.analytics_storage.clone()),
             Some(self.trade_storage.clone()),
             Some(self.report_generator.clone()),
-            &req
-        ).await?;
+            &req,
+        )
+        .await?;
 
         #[cfg(all(feature = "orderbook", not(feature = "orderbook_analytics")))]
         let response = tools::route_tool(
@@ -163,18 +166,13 @@ impl Provider for BinanceProviderServer {
             None,
             None,
             Some(self.report_generator.clone()),
-            &req
-        ).await?;
+            &req,
+        )
+        .await?;
 
         #[cfg(not(feature = "orderbook"))]
-        let response = tools::route_tool(
-            &self.binance_client,
-            None,
-            None,
-            None,
-            None,
-            &req
-        ).await?;
+        let response =
+            tools::route_tool(&self.binance_client, None, None, None, None, &req).await?;
 
         Ok(Response::new(response))
     }

@@ -8,9 +8,8 @@ use crate::mcp::types::{OrderbookParam, SymbolParam};
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::handler::server::ServerHandler;
 use rmcp::model::{
-    CallToolResult, Content, ErrorData, Implementation,
-    InitializeResult, ListResourcesResult, PaginatedRequestParam,
-    ProtocolVersion, ReadResourceRequestParam, ReadResourceResult,
+    CallToolResult, Content, ErrorData, Implementation, InitializeResult, ListResourcesResult,
+    PaginatedRequestParam, ProtocolVersion, ReadResourceRequestParam, ReadResourceResult,
     ResourcesCapability, ServerCapabilities, ToolsCapability,
 };
 use rmcp::service::{RequestContext, RoleServer};
@@ -27,9 +26,7 @@ impl BinanceServer {
     ///
     /// Returns the current server time in milliseconds since Unix epoch.
     /// Useful for time synchronization and validating server connectivity.
-    #[tool(
-        description = "Returns current Binance server time in milliseconds since Unix epoch"
-    )]
+    #[tool(description = "Returns current Binance server time in milliseconds since Unix epoch")]
     pub async fn get_server_time(&self) -> Result<CallToolResult, ErrorData> {
         let server_time = self
             .client
@@ -167,6 +164,8 @@ impl ServerHandler for BinanceServer {
             .await
             .map_err(|e| ErrorData::internal_error(e, None))?;
 
-        Ok(ReadResourceResult { contents: vec![contents] })
+        Ok(ReadResourceResult {
+            contents: vec![contents],
+        })
     }
 }

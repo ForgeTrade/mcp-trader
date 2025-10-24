@@ -317,8 +317,6 @@ impl CapabilityBuilder {
         });
     }
 
-
-
     // ========== OrderBook Analysis Tools (Feature-gated) ==========
 
     #[cfg(feature = "orderbook")]
@@ -494,7 +492,6 @@ impl CapabilityBuilder {
 }"#,
             ),
         });
-
     }
 }
 

@@ -210,12 +210,13 @@ async fn run_grpc_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
 
         // T018: Spawn snapshot persistence task
         let persistence_shutdown_rx = shutdown_tx.subscribe();
-        let _persistence_handle = binance_provider::orderbook::analytics::storage::spawn_snapshot_persistence_task(
-            provider.analytics_storage.clone(),
-            provider.orderbook_manager.clone(),
-            &["BTCUSDT", "ETHUSDT"], // T020: Verify correct symbol parameters
-            persistence_shutdown_rx, // T019: Pass shutdown_rx for graceful shutdown
-        );
+        let _persistence_handle =
+            binance_provider::orderbook::analytics::storage::spawn_snapshot_persistence_task(
+                provider.analytics_storage.clone(),
+                provider.orderbook_manager.clone(),
+                &["BTCUSDT", "ETHUSDT"], // T020: Verify correct symbol parameters
+                persistence_shutdown_rx, // T019: Pass shutdown_rx for graceful shutdown
+            );
 
         tracing::info!("Snapshot persistence task spawned for BTCUSDT, ETHUSDT");
 
@@ -224,10 +225,10 @@ async fn run_grpc_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
         let trade_storage_handle = provider.trade_storage.clone();
 
         tokio::spawn(async move {
-            use binance_provider::orderbook::analytics::trade_stream::TradeStreamHandler;
             use binance_provider::orderbook::analytics::trade_storage::AggTrade as PersistAggTrade;
-            use tokio::time::interval;
+            use binance_provider::orderbook::analytics::trade_stream::TradeStreamHandler;
             use std::time::Duration;
+            use tokio::time::interval;
 
             // Create unbounded channels for BTC and ETH trade streams
             let (btc_tx, mut btc_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -346,11 +347,7 @@ async fn run_http_server(port: u16) -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(not(feature = "orderbook"))]
     {
         let provider = BinanceProviderServer::new()?;
-        binance_provider::transport::http::start_http_server(
-            port,
-            provider.binance_client,
-        )
-        .await?;
+        binance_provider::transport::http::start_http_server(port, provider.binance_client).await?;
     }
 
     Ok(())

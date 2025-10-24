@@ -110,9 +110,7 @@ mod tests {
 
     #[test]
     fn test_session_error_conversion() {
-        let err = HttpTransportError::Session(SessionError::SessionNotFound(
-            uuid::Uuid::new_v4(),
-        ));
+        let err = HttpTransportError::Session(SessionError::SessionNotFound(uuid::Uuid::new_v4()));
 
         let jsonrpc_err = err.to_jsonrpc_error();
         assert_eq!(jsonrpc_err.code, -32002);

@@ -32,38 +32,15 @@ class UnifiedToolRouter:
     def _build_tool_mapping(self) -> Dict[str, str]:
         """
         Build mapping from unified tool names to provider tool names.
+        Feature 018 - FR-002: ONLY the unified market report tool is exposed.
 
         Returns:
             Dictionary mapping unified tool name to provider tool pattern
         """
         return {
-            # Existing market data tools (Feature 012)
-            "market.get_ticker": "{venue}.get_ticker",
-            "market.get_orderbook_l1": "{venue}.orderbook_l1",
-            "market.get_orderbook_l2": "{venue}.orderbook_l2",
-            "market.get_klines": "{venue}.get_klines",
-
-            # NEW: Additional market data tools (Feature 013 - FR-014, FR-015, FR-016)
-            "market.get_recent_trades": "{venue}.get_recent_trades",
-            "market.get_exchange_info": "{venue}.get_exchange_info",
-            "market.get_avg_price": "{venue}.get_avg_price",
-
-            # NEW: Trading tools (Feature 013 - FR-001 to FR-007)
-            "trade.place_order": "{venue}.place_order",
-            "trade.cancel_order": "{venue}.cancel_order",
-            "trade.get_order": "{venue}.get_order",
-            "trade.get_open_orders": "{venue}.get_open_orders",
-            "trade.get_all_orders": "{venue}.get_all_orders",
-            "trade.get_account": "{venue}.get_account",
-            "trade.get_my_trades": "{venue}.get_my_trades",
-
-            # NEW: Analytics tools (Feature 013 - FR-008 to FR-013)
-            "analytics.get_orderbook_health": "{venue}.orderbook_health",
-            "analytics.get_order_flow": "{venue}.get_order_flow",
-            "analytics.get_volume_profile": "{venue}.get_volume_profile",
-            "analytics.detect_market_anomalies": "{venue}.detect_market_anomalies",
-            "analytics.get_microstructure_health": "{venue}.get_microstructure_health",
-            "analytics.detect_liquidity_vacuums": "{venue}.get_liquidity_vacuums",
+            # Feature 018 - FR-002: Single unified market intelligence report
+            # All individual market/trade/analytics tools removed per specification
+            "market.generate_report": "{venue}.generate_market_report",
         }
 
     async def route_tool_call(

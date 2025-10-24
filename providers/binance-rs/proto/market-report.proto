@@ -1,0 +1,207 @@
+syntax = "proto3";
+
+package binance.market_report;
+
+// Market Report Service - Unified market intelligence reporting
+//
+// This service provides a single unified method for generating comprehensive
+// market data reports that consolidate pricing, liquidity, orderbook health,
+// and microstructure analysis into markdown-formatted documents.
+//
+// BREAKING CHANGES (v0.2.0):
+// - All order management methods have been removed (PlaceOrder, CancelOrder, etc.)
+// - Authentication-related methods for user data streams have been removed
+// - Only market data (read-only) methods remain
+service MarketReportService {
+  // Generate a comprehensive market intelligence report for a symbol
+  //
+  // This method consolidates data from multiple sources:
+  // - 24h ticker statistics (price, volume, change)
+  // - Order book metrics (spread, microprice, imbalance)
+  // - Liquidity analysis (walls, volume profile, vacuums)
+  // - Market microstructure (order flow, anomalies)
+  // - Data health status (connectivity, freshness)
+  //
+  // Returns a markdown-formatted report with 7-8 sections depending on
+  // feature flags and data availability.
+  //
+  // Performance: <5s first request, <3s cached requests (60s TTL)
+  rpc GenerateMarketReport(MarketReportRequest) returns (MarketReportResponse);
+
+  // Check service health and readiness
+  //
+  // Returns health status of underlying data sources (WebSocket connections,
+  // cache status, orderbook manager state).
+  rpc GetServiceHealth(ServiceHealthRequest) returns (ServiceHealthResponse);
+}
+
+// Request message for generating a market report
+message MarketReportRequest {
+  // Trading symbol (e.g., "BTCUSDT", "ETHUSDT")
+  // Required. Must be uppercase and supported by the exchange.
+  string symbol = 1;
+
+  // Optional list of section names to include in the report.
+  // If empty, all available sections are included.
+  //
+  // Valid section names:
+  // - "price_overview"
+  // - "orderbook_metrics"
+  // - "liquidity_analysis"
+  // - "market_microstructure"
+  // - "market_anomalies"
+  // - "microstructure_health"
+  // - "data_health"
+  repeated string include_sections = 2;
+
+  // Time window in hours for volume profile calculation.
+  // Default: 24 hours
+  // Valid range: 1-168 (1 hour to 7 days)
+  optional uint32 volume_window_hours = 3;
+
+  // Number of order book levels to include in depth analysis.
+  // Default: 20 levels
+  // Valid range: 1-100
+  optional uint32 orderbook_levels = 4;
+
+  // Whether to bypass cache and force fresh data fetching.
+  // Default: false (use cache if available and fresh)
+  optional bool force_refresh = 5;
+}
+
+// Response message containing the generated market report
+message MarketReportResponse {
+  // The complete markdown-formatted market intelligence report
+  string markdown_report = 1;
+
+  // Symbol this report was generated for
+  string symbol = 2;
+
+  // Unix timestamp in milliseconds when report was generated
+  int64 generated_at = 3;
+
+  // Age of the oldest data source in milliseconds
+  // Indicates data freshness - lower is fresher
+  int32 data_age_ms = 4;
+
+  // List of sections that failed to generate (if any)
+  // Empty list indicates all sections generated successfully
+  repeated string failed_sections = 5;
+
+  // Report generation duration in milliseconds
+  // Includes data fetching, processing, and markdown formatting
+  uint64 generation_time_ms = 6;
+
+  // Whether this report was served from cache
+  bool from_cache = 7;
+
+  // Report metadata with data source timestamps
+  ReportMetadata metadata = 8;
+}
+
+// Metadata about data sources used in the report
+message ReportMetadata {
+  // Timestamp of ticker data (Unix ms)
+  optional int64 ticker_timestamp = 1;
+
+  // Timestamp of orderbook data (Unix ms)
+  optional int64 orderbook_timestamp = 2;
+
+  // Timestamp of analytics data (Unix ms)
+  // Only present if orderbook_analytics feature is enabled
+  optional int64 analytics_timestamp = 3;
+
+  // List of features enabled in this build
+  // Example: ["orderbook_analytics", "volume_profile"]
+  repeated string enabled_features = 4;
+
+  // Data source health indicators
+  map<string, bool> source_health = 5;
+}
+
+// Request message for service health check
+message ServiceHealthRequest {
+  // Optional: Request detailed health info for specific symbols
+  repeated string symbols = 1;
+}
+
+// Response message for service health check
+message ServiceHealthResponse {
+  // Overall service status
+  HealthStatus status = 1;
+
+  // Number of actively tracked symbols
+  uint32 active_symbols = 2;
+
+  // WebSocket connection status
+  bool websocket_connected = 3;
+
+  // Timestamp of last successful data update (Unix ms)
+  int64 last_update_timestamp = 4;
+
+  // Age of last update in milliseconds
+  int32 last_update_age_ms = 5;
+
+  // Detailed health info per symbol (if requested)
+  map<string, SymbolHealth> symbol_health = 6;
+
+  // Human-readable status message
+  string message = 7;
+}
+
+// Health status enum
+enum HealthStatus {
+  HEALTH_STATUS_UNSPECIFIED = 0;
+  HEALTHY = 1;            // All systems operational
+  DEGRADED = 2;           // Some features unavailable but core functionality works
+  UNHEALTHY = 3;          // Critical failures, service may not work correctly
+}
+
+// Per-symbol health information
+message SymbolHealth {
+  string symbol = 1;
+  HealthStatus status = 2;
+  int64 last_update_timestamp = 3;
+  int32 last_update_age_ms = 4;
+  repeated string warnings = 5;
+}
+
+// Error codes for report generation failures
+enum ReportErrorCode {
+  REPORT_ERROR_CODE_UNSPECIFIED = 0;
+  INVALID_SYMBOL = 1;              // Symbol not found or unsupported
+  INVALID_OPTIONS = 2;             // Invalid volume_window_hours or orderbook_levels
+  RATE_LIMIT_EXCEEDED = 3;         // Exchange rate limit hit
+  DATA_UNAVAILABLE = 4;            // Required data sources unavailable
+  TIMEOUT = 5;                     // Report generation exceeded timeout
+  INTERNAL_ERROR = 6;              // Unexpected internal error
+}
+
+// ============================================================================
+// DEPRECATED METHODS - REMOVED IN v0.2.0
+// ============================================================================
+//
+// The following methods have been REMOVED and are no longer available:
+//
+// Order Management (removed):
+// - rpc PlaceOrder(PlaceOrderRequest) returns (Order);
+// - rpc CancelOrder(CancelOrderRequest) returns (Order);
+// - rpc GetOrder(GetOrderRequest) returns (Order);
+// - rpc GetOpenOrders(GetOpenOrdersRequest) returns (OpenOrdersResponse);
+// - rpc GetAllOrders(GetAllOrdersRequest) returns (AllOrdersResponse);
+//
+// Account Information (removed):
+// - rpc GetAccount(GetAccountRequest) returns (Account);
+// - rpc GetMyTrades(GetMyTradesRequest) returns (MyTradesResponse);
+//
+// User Data Stream (removed):
+// - rpc CreateListenKey(CreateListenKeyRequest) returns (ListenKeyResponse);
+// - rpc KeepaliveListenKey(KeepaliveListenKeyRequest) returns (Empty);
+// - rpc CloseListenKey(CloseListenKeyRequest) returns (Empty);
+//
+// Migration Guide:
+// - For market data, use GenerateMarketReport() instead of individual methods
+// - For trading operations, this service is now read-only
+// - Authentication infrastructure is preserved for future authenticated read-only endpoints
+//
+// ============================================================================

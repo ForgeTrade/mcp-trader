@@ -111,24 +111,40 @@ async fn handle_market_resource(client: &BinanceClient, symbol: &str) -> Result<
         ticker.quote_volume,
         top_bids,
         top_asks,
-        orderbook.bids.first().map(|(p, _)| p.as_str()).unwrap_or("N/A"),
-        orderbook.asks.first().map(|(p, _)| p.as_str()).unwrap_or("N/A"),
-        orderbook.asks.first().and_then(|ask| {
-            orderbook.bids.first().map(|bid| {
-                ask.0.parse::<f64>().unwrap_or(0.0) - bid.0.parse::<f64>().unwrap_or(0.0)
+        orderbook
+            .bids
+            .first()
+            .map(|(p, _)| p.as_str())
+            .unwrap_or("N/A"),
+        orderbook
+            .asks
+            .first()
+            .map(|(p, _)| p.as_str())
+            .unwrap_or("N/A"),
+        orderbook
+            .asks
+            .first()
+            .and_then(|ask| {
+                orderbook.bids.first().map(|bid| {
+                    ask.0.parse::<f64>().unwrap_or(0.0) - bid.0.parse::<f64>().unwrap_or(0.0)
+                })
             })
-        }).unwrap_or(0.0),
-        orderbook.asks.first().and_then(|ask| {
-            orderbook.bids.first().map(|bid| {
-                let ask_price = ask.0.parse::<f64>().unwrap_or(0.0);
-                let bid_price = bid.0.parse::<f64>().unwrap_or(0.0);
-                if bid_price > 0.0 {
-                    ((ask_price - bid_price) / bid_price) * 100.0
-                } else {
-                    0.0
-                }
+            .unwrap_or(0.0),
+        orderbook
+            .asks
+            .first()
+            .and_then(|ask| {
+                orderbook.bids.first().map(|bid| {
+                    let ask_price = ask.0.parse::<f64>().unwrap_or(0.0);
+                    let bid_price = bid.0.parse::<f64>().unwrap_or(0.0);
+                    if bid_price > 0.0 {
+                        ((ask_price - bid_price) / bid_price) * 100.0
+                    } else {
+                        0.0
+                    }
+                })
             })
-        }).unwrap_or(0.0),
+            .unwrap_or(0.0),
         timestamp
     );
 
@@ -138,6 +154,3 @@ async fn handle_market_resource(client: &BinanceClient, symbol: &str) -> Result<
         error: String::new(),
     })
 }
-
-
-

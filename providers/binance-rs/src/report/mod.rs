@@ -34,7 +34,7 @@ pub struct ReportOptions {
 impl Default for ReportOptions {
     fn default() -> Self {
         Self {
-            include_sections: None,  // All sections
+            include_sections: None, // All sections
             volume_window_hours: Some(24),
             orderbook_levels: Some(20),
         }
@@ -85,7 +85,10 @@ impl ReportOptions {
         let ob_levels = self.orderbook_levels.unwrap_or(20);
 
         // Create deterministic cache key suffix
-        format!("sections:{};volume:{};levels:{}", sections_key, volume_hours, ob_levels)
+        format!(
+            "sections:{};volume:{};levels:{}",
+            sections_key, volume_hours, ob_levels
+        )
     }
 
     /// Generate full cache key combining symbol and options
@@ -171,9 +174,7 @@ impl SectionError {
                     feature
                 )
             }
-            SectionError::Timeout => {
-                "Data fetch timed out. Please try again.".to_string()
-            }
+            SectionError::Timeout => "Data fetch timed out. Please try again.".to_string(),
         }
     }
 }

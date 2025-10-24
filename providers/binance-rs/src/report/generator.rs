@@ -1,10 +1,10 @@
 // Report generator - main orchestrator for creating market intelligence reports
 
-use super::{MarketReport, ReportOptions, ReportCache};
 use super::sections;
+use super::{MarketReport, ReportCache, ReportOptions};
 use crate::binance::BinanceClient;
-use crate::orderbook::OrderBookManager;
 use crate::orderbook::metrics;
+use crate::orderbook::OrderBookManager;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -47,15 +47,22 @@ impl ReportGenerator {
 
         // Check cache (P1 fix: preserve metadata)
         if let Some(cached_report) = self.cache.get(&cache_key) {
+            let cache_retrieval_time = start_time.elapsed().as_millis() as i32;
+
+            // T043: Add footer to cached report
+            let footer = sections::build_report_footer(cache_retrieval_time, true);
+            let mut markdown_with_footer = cached_report.markdown_content.clone();
+            markdown_with_footer.push_str(&footer);
+
             // Return cached report with preserved metadata
             // Update only generation_time_ms to reflect cache retrieval time
             return Ok(MarketReport {
-                markdown_content: cached_report.markdown_content,
+                markdown_content: markdown_with_footer,
                 symbol: cached_report.symbol,
                 generated_at: cached_report.generated_at,
                 data_age_ms: cached_report.data_age_ms, // Preserved from original
                 failed_sections: cached_report.failed_sections, // Preserved from original
-                generation_time_ms: start_time.elapsed().as_millis() as u64, // Cache retrieval time
+                generation_time_ms: cache_retrieval_time as u64, // Cache retrieval time
             });
         }
 
@@ -76,7 +83,9 @@ impl ReportGenerator {
         // Build sections
         let ticker_data = ticker_result.ok();
         let orderbook_data = orderbook_result.ok();
-        let orderbook_metrics = orderbook_data.as_ref().and_then(|ob| metrics::calculate_metrics(ob));
+        let orderbook_metrics = orderbook_data
+            .as_ref()
+            .and_then(|ob| metrics::calculate_metrics(ob));
 
         let mut failed_sections = Vec::new();
 
@@ -84,16 +93,18 @@ impl ReportGenerator {
         let header = sections::build_report_header(&symbol_upper, now_ms, data_age_ms);
         let price = sections::build_price_overview_section(ticker_data.as_ref());
         let orderbook = sections::build_orderbook_metrics_section(orderbook_metrics.as_ref());
-        let liquidity = sections::build_liquidity_analysis_section(orderbook_metrics.as_ref());
+        let volume_hours = options.volume_window_hours.unwrap_or(24);
+        let liquidity =
+            sections::build_liquidity_analysis_section(orderbook_metrics.as_ref(), volume_hours); // T033-T037: Pass volume window
         let microstructure = sections::build_microstructure_section();
-        let anomalies = sections::build_anomalies_section();
+        let anomalies = sections::build_anomalies_section(Some(now_ms)); // T028-T032: Pass timestamp for enhanced display
         let health = sections::build_health_section();
         let data_health = sections::build_data_health_section(data_age_ms);
 
         // P1 fix: Honor ReportOptions.include_sections
         let should_include_section = |section_name: &str| -> bool {
             match &options.include_sections {
-                None => true, // Include all
+                None => true,                          // Include all
                 Some(list) if list.is_empty() => true, // Include all
                 Some(list) => list.contains(&section_name.to_string()),
             }
@@ -140,7 +151,11 @@ impl ReportGenerator {
             markdown.push_str(&data_health.render());
         }
 
-        let generation_time_ms = start_time.elapsed().as_millis() as u64;
+        let generation_time_ms = start_time.elapsed().as_millis() as i32;
+
+        // T043: Add footer to fresh report
+        let footer = sections::build_report_footer(generation_time_ms, false);
+        markdown.push_str(&footer);
 
         // Build complete report
         let report = MarketReport {
@@ -149,7 +164,7 @@ impl ReportGenerator {
             generated_at: now_ms,
             data_age_ms,
             failed_sections,
-            generation_time_ms,
+            generation_time_ms: generation_time_ms as u64,
         };
 
         // Cache result (P0 fix: use cache_key that includes options)

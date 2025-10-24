@@ -8,10 +8,7 @@ pub mod handler;
 pub mod jsonrpc;
 pub mod session;
 
-use axum::{
-    routing::post,
-    Router,
-};
+use axum::{routing::post, Router};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
@@ -27,6 +24,7 @@ use session::SessionStore;
 /// * `orderbook_manager` - Optional orderbook manager
 /// * `analytics_storage` - Optional analytics storage
 /// * `trade_storage` - Optional trade storage
+/// * `report_generator` - Optional market report generator
 ///
 /// # Endpoints
 /// - POST /mcp: JSON-RPC 2.0 endpoint
@@ -40,12 +38,16 @@ use session::SessionStore;
 pub async fn start_http_server(
     port: u16,
     binance_client: crate::binance::client::BinanceClient,
-    #[cfg(feature = "orderbook")]
-    orderbook_manager: Option<Arc<crate::orderbook::OrderBookManager>>,
-    #[cfg(feature = "orderbook_analytics")]
-    analytics_storage: Option<Arc<crate::orderbook::analytics::SnapshotStorage>>,
-    #[cfg(feature = "orderbook_analytics")]
-    trade_storage: Option<Arc<crate::orderbook::analytics::TradeStorage>>,
+    #[cfg(feature = "orderbook")] orderbook_manager: Option<
+        Arc<crate::orderbook::OrderBookManager>,
+    >,
+    #[cfg(feature = "orderbook_analytics")] analytics_storage: Option<
+        Arc<crate::orderbook::analytics::SnapshotStorage>,
+    >,
+    #[cfg(feature = "orderbook_analytics")] trade_storage: Option<
+        Arc<crate::orderbook::analytics::TradeStorage>,
+    >,
+    #[cfg(feature = "orderbook")] report_generator: Option<Arc<crate::report::ReportGenerator>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("Initializing HTTP MCP server...");
 
@@ -62,6 +64,8 @@ pub async fn start_http_server(
         analytics_storage,
         #[cfg(feature = "orderbook_analytics")]
         trade_storage,
+        #[cfg(feature = "orderbook")]
+        report_generator,
     };
 
     // Configure CORS

@@ -67,7 +67,11 @@ pub fn detect_quote_stuffing(
 
         Some(MarketMicrostructureAnomaly {
             anomaly_id: Uuid::new_v4(),
-            symbol: snapshots[0].bids.get(0).map(|(s, _)| s.clone()).unwrap_or_default(), // Extract symbol from data
+            symbol: snapshots[0]
+                .bids
+                .get(0)
+                .map(|(s, _)| s.clone())
+                .unwrap_or_default(), // Extract symbol from data
             anomaly_type: AnomalyType::QuoteStuffing {
                 update_rate,
                 fill_rate,
@@ -151,7 +155,8 @@ pub fn detect_iceberg_orders(
             confidence_score,
             affected_price_levels: vec![price_level],
             severity,
-            recommended_action: "Large hidden order detected - price may act as support/resistance".to_string(),
+            recommended_action: "Large hidden order detected - price may act as support/resistance"
+                .to_string(),
             metadata: serde_json::json!({
                 "refill_events": refill_events,
                 "z_score": z_score,
@@ -178,12 +183,16 @@ pub fn detect_flash_crash_risk(
     cancellation_rate: f64,
 ) -> Option<MarketMicrostructureAnomaly> {
     // Calculate liquidity drain
-    let current_depth: f64 = current_snapshot.bids.iter()
+    let current_depth: f64 = current_snapshot
+        .bids
+        .iter()
         .chain(current_snapshot.asks.iter())
         .filter_map(|(_, qty)| qty.parse::<f64>().ok())
         .sum();
 
-    let baseline_depth: f64 = baseline_snapshot.bids.iter()
+    let baseline_depth: f64 = baseline_snapshot
+        .bids
+        .iter()
         .chain(baseline_snapshot.asks.iter())
         .filter_map(|(_, qty)| qty.parse::<f64>().ok())
         .sum();
@@ -196,10 +205,13 @@ pub fn detect_flash_crash_risk(
     let spread_multiplier = current_spread / baseline_spread;
 
     // Thresholds from FR
-    let is_flash_crash = depth_loss_pct > 80.0 && spread_multiplier > 10.0 && cancellation_rate > 90.0;
+    let is_flash_crash =
+        depth_loss_pct > 80.0 && spread_multiplier > 10.0 && cancellation_rate > 90.0;
 
     if is_flash_crash {
-        let confidence_score = ((depth_loss_pct / 80.0) + (spread_multiplier / 10.0) + (cancellation_rate / 90.0)) / 3.0;
+        let confidence_score =
+            ((depth_loss_pct / 80.0) + (spread_multiplier / 10.0) + (cancellation_rate / 90.0))
+                / 3.0;
         let confidence_clamped = confidence_score.min(1.0);
 
         Some(MarketMicrostructureAnomaly {
@@ -214,7 +226,8 @@ pub fn detect_flash_crash_risk(
             confidence_score: confidence_clamped,
             affected_price_levels: Vec::new(),
             severity: Severity::Critical, // Flash crash risk is always critical
-            recommended_action: "CRITICAL: Close positions and avoid trading - flash crash imminent".to_string(),
+            recommended_action:
+                "CRITICAL: Close positions and avoid trading - flash crash imminent".to_string(),
             metadata: serde_json::json!({
                 "current_depth": current_depth,
                 "baseline_depth": baseline_depth,
@@ -245,7 +258,10 @@ mod tests {
 
     #[test]
     fn test_calculate_quote_stuffing_severity() {
-        assert_eq!(calculate_quote_stuffing_severity(1100.0), Severity::Critical);
+        assert_eq!(
+            calculate_quote_stuffing_severity(1100.0),
+            Severity::Critical
+        );
         assert_eq!(calculate_quote_stuffing_severity(850.0), Severity::High);
         assert_eq!(calculate_quote_stuffing_severity(600.0), Severity::Medium);
         assert_eq!(calculate_quote_stuffing_severity(400.0), Severity::Low);
@@ -253,18 +269,24 @@ mod tests {
 
     #[test]
     fn test_detect_quote_stuffing_threshold() {
-        let snapshots = vec![OrderBookSnapshot {
-            bids: vec![("100.0".to_string(), "1.0".to_string())],
-            asks: vec![],
-            update_id: 1,
-            timestamp: 0,
-        }; 600]; // 600 snapshots = 600 updates/sec
+        let snapshots = vec![
+            OrderBookSnapshot {
+                bids: vec![("100.0".to_string(), "1.0".to_string())],
+                asks: vec![],
+                update_id: 1,
+                timestamp: 0,
+            };
+            600
+        ]; // 600 snapshots = 600 updates/sec
 
         let result = detect_quote_stuffing(&snapshots, 0.05);
         assert!(result.is_some());
 
         let anomaly = result.unwrap();
-        assert!(matches!(anomaly.anomaly_type, AnomalyType::QuoteStuffing { .. }));
+        assert!(matches!(
+            anomaly.anomaly_type,
+            AnomalyType::QuoteStuffing { .. }
+        ));
         assert_eq!(anomaly.severity, Severity::Medium);
     }
 }

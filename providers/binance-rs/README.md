@@ -1,19 +1,21 @@
 # Binance Provider
 
-MCP provider for Binance cryptocurrency trading with advanced order book analytics and dual transport (gRPC + HTTP/JSON-RPC).
+MCP provider for Binance cryptocurrency market data analysis with advanced order book analytics and dual transport (gRPC + HTTP/JSON-RPC).
 
 ## Overview
 
-This provider exposes Binance trading functionality through both gRPC and HTTP transports, implementing the MCP protocol for AI-powered trading analysis and execution. Features real-time order book analytics with RocksDB time-series storage.
+This provider exposes Binance market data and analytics through both gRPC and HTTP transports, implementing the MCP protocol for AI-powered market analysis. Features real-time order book analytics with RocksDB time-series storage and a unified market report generator.
 
 ## Features
 
-- **21 Tools**: Market data, trading, orderbook analysis, and **5 advanced analytics tools**
-- **4 Resources**: Market data, account balances, trade history, open orders
-- **2 Prompts**: Trading analysis, portfolio risk assessment
+- **12 Tools**: Market data + unified reporting + orderbook analysis + **5 advanced analytics tools**
+- **1 Resource**: Real-time market data
+- **1 Prompt**: Trading analysis with market context
 - **Dual Transport**: gRPC (binary protocol) and HTTP (JSON-RPC 2.0)
 - **Advanced Analytics**: Order flow, volume profile, anomaly detection, microstructure health, liquidity mapping
+- **Unified Reporting**: Comprehensive market intelligence reports combining 8 data sections
 - **Time-Series Storage**: RocksDB with MessagePack compression (70% size reduction)
+- **Read-Only**: Pure market data analysis (no order placement or account management)
 
 ## Quick Start
 
@@ -122,35 +124,25 @@ curl -X POST http://localhost:3000/mcp \
   }'
 ```
 
-## Tools (21 total)
+## Tools (12 total)
 
-### Market Data (Public) - 6 tools
+### Market Data (Public) - 7 tools
 1. `binance.get_ticker` - 24-hour ticker statistics
 2. `binance.get_orderbook` - Market depth (bids/asks)
 3. `binance.get_recent_trades` - Recent public trades
 4. `binance.get_klines` - OHLCV candlestick data
 5. `binance.get_exchange_info` - Exchange trading rules
 6. `binance.get_avg_price` - Current average price
+7. `binance.generate_market_report` - **Unified market intelligence report** (requires orderbook feature)
 
-### Account (Authenticated) - 2 tools
-7. `binance.get_account` - Account balances and permissions
-8. `binance.get_my_trades` - Personal trade history
-
-### Trading (Authenticated) - 5 tools
-9. `binance.place_order` - Create BUY/SELL orders
-10. `binance.cancel_order` - Cancel active order
-11. `binance.get_order` - Query order status
-12. `binance.get_open_orders` - List active orders
-13. `binance.get_all_orders` - Complete order history
-
-### OrderBook Analysis - 3 tools
-14. `binance.orderbook_l1` - L1 metrics (spread, microprice, imbalance)
-15. `binance.orderbook_l2` - L2 depth (20 or 100 levels)
-16. `binance.orderbook_health` - WebSocket service health
+### OrderBook Analysis (Feature: `orderbook`) - 3 tools
+8. `binance.orderbook_l1` - L1 metrics (spread, microprice, imbalance)
+9. `binance.orderbook_l2` - L2 depth (20 or 100 levels)
+10. `binance.orderbook_health` - WebSocket service health
 
 ### Advanced Analytics (Feature: `orderbook_analytics`) - 5 tools
 
-#### 17. `binance.get_order_flow` - Bid/Ask Pressure Tracking
+#### 11. `binance.get_order_flow` - Bid/Ask Pressure Tracking
 Analyzes order flow dynamics over configurable time windows (10-300 seconds).
 
 **Parameters:**
@@ -179,7 +171,7 @@ curl -X POST http://localhost:3000/mcp \
   }'
 ```
 
-#### 18. `binance.get_volume_profile` - Volume Distribution Histogram
+#### 12. `binance.get_volume_profile` - Volume Distribution Histogram
 Generates volume profile with POC (Point of Control), VAH/VAL (Value Area High/Low - 70% volume boundaries).
 
 **Parameters:**
@@ -208,7 +200,7 @@ curl -X POST http://localhost:3000/mcp \
   }'
 ```
 
-#### 19. `binance.detect_market_anomalies` - Market Manipulation Detection
+#### 13. `binance.detect_market_anomalies` - Market Manipulation Detection
 Detects quote stuffing, iceberg orders, and flash crash risk.
 
 **Parameters:**
@@ -235,7 +227,7 @@ curl -X POST http://localhost:3000/mcp \
   }'
 ```
 
-#### 20. `binance.get_microstructure_health` - Market Health Scoring
+#### 14. `binance.get_microstructure_health` - Market Health Scoring
 Returns composite 0-100 health score with component breakdowns.
 
 **Parameters:**
@@ -251,7 +243,7 @@ Returns composite 0-100 health score with component breakdowns.
 - `warnings`: Active issues
 - `recommendations`: Suggested actions
 
-#### 21. `binance.get_liquidity_vacuums` - Stop-Loss Placement Guidance
+#### 15. `binance.get_liquidity_vacuums` - Stop-Loss Placement Guidance
 Identifies price zones with <20% of median volume for optimal stop placement.
 
 **Parameters:**
@@ -307,15 +299,11 @@ cargo run --features orderbook,orderbook_analytics -- --http
 
 ## Resources
 
-- `binance://market/{symbol}` - Market data (e.g., btcusdt)
-- `binance://account/balances` - Account balances table
-- `binance://account/trades` - Trade history
-- `binance://orders/open` - Open orders table
+- `binance://market/{symbol}` - Real-time market data with 24h statistics and order book snapshot
 
 ## Prompts
 
-- `trading_analysis` - Market analysis with trading recommendations
-- `portfolio_risk` - Portfolio risk assessment
+- `trading-analysis` - Comprehensive market analysis with actionable trading insights (parameters: symbol, timeframe)
 
 ## Feature Flags
 
@@ -332,17 +320,17 @@ http_transport = ["axum", "tower", "tower-http", "uuid"]
 **Build Configurations:**
 
 ```bash
-# Full build (21 tools, both transports)
+# Full build (12 tools with analytics, both transports)
 cargo build --release
 
-# Minimal build (13 tools, gRPC only)
-cargo build --release --no-default-features --features websocket
+# Minimal build (6 base tools only, gRPC only)
+cargo build --release --no-default-features
+
+# With orderbook but no analytics (10 tools)
+cargo build --release --no-default-features --features orderbook,http_transport,mcp_server
 
 # Analytics only (no HTTP)
 cargo build --release --no-default-features --features orderbook,orderbook_analytics
-
-# HTTP only (no analytics)
-cargo build --release --no-default-features --features http_transport
 ```
 
 ## Architecture

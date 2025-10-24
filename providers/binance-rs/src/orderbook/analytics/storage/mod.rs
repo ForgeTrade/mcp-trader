@@ -11,7 +11,7 @@ pub mod query;
 pub mod snapshot;
 
 use anyhow::{Context, Result};
-use rocksdb::{DB, Options, WriteBatch};
+use rocksdb::{Options, WriteBatch, DB};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -151,7 +151,10 @@ pub fn spawn_snapshot_persistence_task(
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
-        tracing::info!("Snapshot persistence task started for {} symbols", symbols_owned.len());
+        tracing::info!(
+            "Snapshot persistence task started for {} symbols",
+            symbols_owned.len()
+        );
 
         loop {
             tokio::select! {

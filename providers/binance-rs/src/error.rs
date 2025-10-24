@@ -144,36 +144,14 @@ impl McpError {
         use rmcp::model::{ErrorCode, ErrorData};
 
         match self {
-            McpError::RateLimitError(msg) => ErrorData::new(
-                ErrorCode(429),
-                msg.clone(),
-                None,
-            ),
-            McpError::InvalidRequest(msg) => ErrorData::new(
-                ErrorCode(400),
-                msg.clone(),
-                None,
-            ),
-            McpError::ParseError(msg) => ErrorData::new(
-                ErrorCode(400),
-                format!("Parse error: {}", msg),
-                None,
-            ),
-            McpError::ConnectionError(msg) => ErrorData::new(
-                ErrorCode(503),
-                msg.clone(),
-                None,
-            ),
-            McpError::NotReady(msg) => ErrorData::new(
-                ErrorCode(503),
-                msg.clone(),
-                None,
-            ),
-            McpError::InternalError(msg) => ErrorData::new(
-                ErrorCode(500),
-                msg.clone(),
-                None,
-            ),
+            McpError::RateLimitError(msg) => ErrorData::new(ErrorCode(429), msg.clone(), None),
+            McpError::InvalidRequest(msg) => ErrorData::new(ErrorCode(400), msg.clone(), None),
+            McpError::ParseError(msg) => {
+                ErrorData::new(ErrorCode(400), format!("Parse error: {}", msg), None)
+            }
+            McpError::ConnectionError(msg) => ErrorData::new(ErrorCode(503), msg.clone(), None),
+            McpError::NotReady(msg) => ErrorData::new(ErrorCode(503), msg.clone(), None),
+            McpError::InternalError(msg) => ErrorData::new(ErrorCode(500), msg.clone(), None),
         }
     }
 }

@@ -81,20 +81,20 @@ Timeframe for analysis: {}"#,
     );
 
     // Calculate spread for order book analysis
-    let (best_bid, best_ask, spread, spread_pct) = if let (Some(bid), Some(ask)) =
-        (orderbook.bids.first(), orderbook.asks.first()) {
-        let bid_price = bid.0.parse::<f64>().unwrap_or(0.0);
-        let ask_price = ask.0.parse::<f64>().unwrap_or(0.0);
-        let spread_val = ask_price - bid_price;
-        let spread_pct_val = if bid_price > 0.0 {
-            (spread_val / bid_price) * 100.0
+    let (best_bid, best_ask, spread, spread_pct) =
+        if let (Some(bid), Some(ask)) = (orderbook.bids.first(), orderbook.asks.first()) {
+            let bid_price = bid.0.parse::<f64>().unwrap_or(0.0);
+            let ask_price = ask.0.parse::<f64>().unwrap_or(0.0);
+            let spread_val = ask_price - bid_price;
+            let spread_pct_val = if bid_price > 0.0 {
+                (spread_val / bid_price) * 100.0
+            } else {
+                0.0
+            };
+            (bid.0.clone(), ask.0.clone(), spread_val, spread_pct_val)
         } else {
-            0.0
+            ("N/A".to_string(), "N/A".to_string(), 0.0, 0.0)
         };
-        (bid.0.clone(), ask.0.clone(), spread_val, spread_pct_val)
-    } else {
-        ("N/A".to_string(), "N/A".to_string(), 0.0, 0.0)
-    };
 
     let context_message = format!(
         r#"## Market Data for {}
@@ -130,11 +130,17 @@ Use this data to provide a comprehensive trading analysis."#,
         best_ask,
         spread,
         spread_pct,
-        orderbook.bids.iter().take(5)
+        orderbook
+            .bids
+            .iter()
+            .take(5)
             .map(|(p, q)| format!("{}@{}", q, p))
             .collect::<Vec<_>>()
             .join(", "),
-        orderbook.asks.iter().take(5)
+        orderbook
+            .asks
+            .iter()
+            .take(5)
             .map(|(p, q)| format!("{}@{}", q, p))
             .collect::<Vec<_>>()
             .join(", ")
@@ -151,4 +157,3 @@ Use this data to provide a comprehensive trading analysis."#,
         },
     ])
 }
-

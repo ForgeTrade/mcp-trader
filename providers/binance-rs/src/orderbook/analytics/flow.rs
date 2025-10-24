@@ -8,11 +8,7 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Duration, Utc};
 
 use crate::orderbook::analytics::{
-    storage::{
-        snapshot::OrderBookSnapshot,
-        query::query_snapshots_in_window,
-        SnapshotStorage,
-    },
+    storage::{query::query_snapshots_in_window, snapshot::OrderBookSnapshot, SnapshotStorage},
     types::{AbsorptionEvent, Direction, EntityType, FlowDirection, OrderFlowSnapshot},
 };
 use rust_decimal::Decimal;
@@ -48,14 +44,9 @@ pub async fn calculate_order_flow(
     let start = end - Duration::seconds(window_duration_secs as i64);
 
     // Query snapshots from RocksDB (with 200ms timeout from FR-016)
-    let snapshots = query_snapshots_in_window(
-        storage,
-        symbol,
-        start.timestamp(),
-        end.timestamp(),
-    )
-    .await
-    .context("Failed to query snapshots from storage")?;
+    let snapshots = query_snapshots_in_window(storage, symbol, start.timestamp(), end.timestamp())
+        .await
+        .context("Failed to query snapshots from storage")?;
 
     anyhow::ensure!(
         snapshots.len() >= 2,
@@ -110,7 +101,7 @@ fn aggregate_bid_ask_counts(snapshots: &[OrderBookSnapshot]) -> Result<(u64, u64
         // Count new orders on bid side (positive depth increases)
         for (price_str, curr_qty_str) in &curr.bids {
             let curr_qty: f64 = curr_qty_str.parse().unwrap_or(0.0);
-            
+
             let prev_qty: f64 = prev
                 .bids
                 .iter()
@@ -126,7 +117,7 @@ fn aggregate_bid_ask_counts(snapshots: &[OrderBookSnapshot]) -> Result<(u64, u64
         // Count new orders on ask side
         for (price_str, curr_qty_str) in &curr.asks {
             let curr_qty: f64 = curr_qty_str.parse().unwrap_or(0.0);
-            
+
             let prev_qty: f64 = prev
                 .asks
                 .iter()
@@ -187,19 +178,27 @@ fn calculate_cumulative_delta(snapshots: &[OrderBookSnapshot]) -> Result<f64> {
         let curr = &window[1];
 
         // Calculate net volume change on bid side (buying pressure)
-        let bid_volume: f64 = curr.bids.iter()
+        let bid_volume: f64 = curr
+            .bids
+            .iter()
             .filter_map(|(_, qty)| qty.parse::<f64>().ok())
             .sum();
-        let prev_bid_volume: f64 = prev.bids.iter()
+        let prev_bid_volume: f64 = prev
+            .bids
+            .iter()
             .filter_map(|(_, qty)| qty.parse::<f64>().ok())
             .sum();
         let bid_delta = bid_volume - prev_bid_volume;
 
         // Calculate net volume change on ask side (selling pressure)
-        let ask_volume: f64 = curr.asks.iter()
+        let ask_volume: f64 = curr
+            .asks
+            .iter()
             .filter_map(|(_, qty)| qty.parse::<f64>().ok())
             .sum();
-        let prev_ask_volume: f64 = prev.asks.iter()
+        let prev_ask_volume: f64 = prev
+            .asks
+            .iter()
             .filter_map(|(_, qty)| qty.parse::<f64>().ok())
             .sum();
         let ask_delta = ask_volume - prev_ask_volume;
@@ -261,8 +260,10 @@ pub fn detect_absorption_events(
                     let reduction_pct = (prev_qty - curr_qty) / prev_qty;
                     if reduction_pct > Decimal::from_str("0.20").unwrap() {
                         // Mark potential absorption zone
-                        let timestamp = DateTime::from_timestamp(curr.timestamp, 0).unwrap_or(Utc::now());
-                        bid_refills.entry(price_str.clone())
+                        let timestamp =
+                            DateTime::from_timestamp(curr.timestamp, 0).unwrap_or(Utc::now());
+                        bid_refills
+                            .entry(price_str.clone())
                             .or_insert_with(Vec::new)
                             .push((timestamp, curr_qty));
                     }
@@ -280,8 +281,10 @@ pub fn detect_absorption_events(
                 if prev_qty > Decimal::ZERO {
                     let reduction_pct = (prev_qty - curr_qty) / prev_qty;
                     if reduction_pct > Decimal::from_str("0.20").unwrap() {
-                        let timestamp = DateTime::from_timestamp(curr.timestamp, 0).unwrap_or(Utc::now());
-                        ask_refills.entry(price_str.clone())
+                        let timestamp =
+                            DateTime::from_timestamp(curr.timestamp, 0).unwrap_or(Utc::now());
+                        ask_refills
+                            .entry(price_str.clone())
                             .or_insert_with(Vec::new)
                             .push((timestamp, curr_qty));
                     }
@@ -291,13 +294,15 @@ pub fn detect_absorption_events(
     }
 
     // Calculate median volumes
-    let all_bid_volumes: Vec<Decimal> = snapshots.iter()
+    let all_bid_volumes: Vec<Decimal> = snapshots
+        .iter()
         .flat_map(|s| &s.bids)
         .filter_map(|(_, qty)| Decimal::from_str(qty).ok())
         .collect();
     let median_bid_volume = calculate_median(&all_bid_volumes);
 
-    let all_ask_volumes: Vec<Decimal> = snapshots.iter()
+    let all_ask_volumes: Vec<Decimal> = snapshots
+        .iter()
         .flat_map(|s| &s.asks)
         .filter_map(|(_, qty)| Decimal::from_str(qty).ok())
         .collect();
@@ -408,10 +413,7 @@ mod tests {
             determine_flow_direction(60.0, 50.0),
             FlowDirection::ModerateBuy
         );
-        assert_eq!(
-            determine_flow_direction(50.0, 50.0),
-            FlowDirection::Neutral
-        );
+        assert_eq!(determine_flow_direction(50.0, 50.0), FlowDirection::Neutral);
     }
 
     #[test]
