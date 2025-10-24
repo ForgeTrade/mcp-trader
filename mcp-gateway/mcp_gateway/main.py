@@ -217,7 +217,8 @@ class MCPGateway:
         # Invoke the tool on the provider
         client = self.clients[provider_name]
         try:
-            response = await client.invoke(provider_tool_name, provider_arguments, correlation_id)
+            # Use 5s timeout for market reports (generation takes ~2-3s with analytics)
+            response = await client.invoke(provider_tool_name, provider_arguments, correlation_id, timeout=5.0)
 
             if "error" in response:
                 error_msg = f"Tool invocation failed: {response['error']}"
