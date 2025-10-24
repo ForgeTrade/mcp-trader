@@ -2,7 +2,7 @@
 // Handles RocksDB operations for storing and querying aggregate trade batches
 
 use anyhow::{Context, Result};
-use rocksdb::{DB, WriteBatch};
+use rocksdb::{WriteBatch, DB};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -68,7 +68,8 @@ impl TradeStorage {
         let value = rmp_serde::to_vec(&trades)
             .context("Failed to serialize trade batch with MessagePack")?;
 
-        self.db.put(key.as_bytes(), value)
+        self.db
+            .put(key.as_bytes(), value)
             .context("Failed to write trade batch to RocksDB")?;
 
         Ok(())
@@ -96,7 +97,11 @@ impl TradeStorage {
         let prefix = format!("{}{}:", TRADES_KEY_PREFIX, symbol);
         tracing::info!(
             "Querying trades: symbol={} prefix='{}' start_time={} end_time={} window_hours={}",
-            symbol, prefix, start_time, end_time, window_hours
+            symbol,
+            prefix,
+            start_time,
+            end_time,
+            window_hours
         );
         let mut all_trades = Vec::new();
 
@@ -126,7 +131,9 @@ impl TradeStorage {
 
         tracing::info!(
             "Query complete: found {} trades from {} keys for symbol={}",
-            all_trades.len(), key_count, symbol
+            all_trades.len(),
+            key_count,
+            symbol
         );
         Ok(all_trades)
     }
@@ -155,7 +162,8 @@ impl TradeStorage {
         }
 
         if deleted_count > 0 {
-            self.db.write(batch)
+            self.db
+                .write(batch)
                 .context("Failed to execute batch delete of old trades")?;
         }
 
@@ -225,15 +233,17 @@ mod tests {
         }
 
         // Store batches
-        storage.store_batch("BTCUSDT", base_timestamp, trades_batch1).unwrap();
-        storage.store_batch("BTCUSDT", base_timestamp + 1000, trades_batch2).unwrap();
+        storage
+            .store_batch("BTCUSDT", base_timestamp, trades_batch1)
+            .unwrap();
+        storage
+            .store_batch("BTCUSDT", base_timestamp + 1000, trades_batch2)
+            .unwrap();
 
         // Query 1-hour window (should return all 100 trades)
-        let queried = storage.query_trades(
-            "BTCUSDT",
-            base_timestamp,
-            base_timestamp + 3600 * 1000,
-        ).unwrap();
+        let queried = storage
+            .query_trades("BTCUSDT", base_timestamp, base_timestamp + 3600 * 1000)
+            .unwrap();
 
         assert_eq!(queried.len(), 100);
         assert_eq!(queried[0].price, "43250.0");

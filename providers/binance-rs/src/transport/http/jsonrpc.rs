@@ -228,11 +228,7 @@ mod tests {
 
     #[test]
     fn test_jsonrpc_request() {
-        let req = JsonRpcRequest::new(
-            "tools/list",
-            None,
-            Some(serde_json::json!(1)),
-        );
+        let req = JsonRpcRequest::new("tools/list", None, Some(serde_json::json!(1)));
 
         assert_eq!(req.jsonrpc, "2.0");
         assert_eq!(req.method, "tools/list");
@@ -251,10 +247,8 @@ mod tests {
 
     #[test]
     fn test_jsonrpc_success_response() {
-        let resp = JsonRpcResponse::success(
-            serde_json::json!({"status": "ok"}),
-            serde_json::json!(1),
-        );
+        let resp =
+            JsonRpcResponse::success(serde_json::json!({"status": "ok"}), serde_json::json!(1));
 
         assert_eq!(resp.jsonrpc, "2.0");
         assert!(resp.result.is_some());

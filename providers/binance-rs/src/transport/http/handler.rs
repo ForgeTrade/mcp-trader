@@ -46,6 +46,10 @@ pub struct AppState {
     /// Trade storage (optional)
     #[cfg(feature = "orderbook_analytics")]
     pub trade_storage: Option<Arc<crate::orderbook::analytics::TradeStorage>>,
+
+    /// Market data report generator (optional)
+    #[cfg(feature = "orderbook")]
+    pub report_generator: Option<Arc<crate::report::ReportGenerator>>,
 }
 
 /// Main JSON-RPC endpoint handler
@@ -99,10 +103,7 @@ pub async fn handle_jsonrpc(
 /// Handle initialize method
 ///
 /// Creates a new session and returns session ID in Mcp-Session-Id header
-async fn handle_initialize(
-    state: AppState,
-    request: JsonRpcRequest,
-) -> Result<JsonRpcResponse> {
+async fn handle_initialize(state: AppState, request: JsonRpcRequest) -> Result<JsonRpcResponse> {
     // Create session
     let client_metadata = HashMap::new(); // Could extract User-Agent, IP, etc.
     let session_id = state.sessions.create_session(client_metadata)?;
@@ -141,10 +142,7 @@ async fn handle_initialize(
 /// Handle tools/list method
 ///
 /// Returns all 21 available tools with their JSON schemas
-async fn handle_tools_list(
-    _state: AppState,
-    request: JsonRpcRequest,
-) -> Result<JsonRpcResponse> {
+async fn handle_tools_list(_state: AppState, request: JsonRpcRequest) -> Result<JsonRpcResponse> {
     tracing::debug!("Listing all available tools");
 
     // Build capabilities to get tool list
@@ -182,10 +180,7 @@ async fn handle_tools_list(
 /// Handle tools/call method
 ///
 /// Routes tool invocations to the appropriate handler
-async fn handle_tools_call(
-    state: AppState,
-    request: JsonRpcRequest,
-) -> Result<JsonRpcResponse> {
+async fn handle_tools_call(state: AppState, request: JsonRpcRequest) -> Result<JsonRpcResponse> {
     // Extract parameters
     let params = request
         .params
@@ -208,7 +203,12 @@ async fn handle_tools_call(
         payload: Some(PbJson {
             value: serde_json::to_string(&tool_args)?.into_bytes(),
         }),
-        correlation_id: request.id.as_ref().and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        correlation_id: request
+            .id
+            .as_ref()
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
     };
 
     // Route to tool handler
@@ -218,6 +218,7 @@ async fn handle_tools_call(
         state.orderbook_manager.clone(),
         state.analytics_storage.clone(),
         state.trade_storage.clone(),
+        state.report_generator.clone(),
         &invoke_request,
     )
     .await?;
@@ -228,6 +229,7 @@ async fn handle_tools_call(
         state.orderbook_manager.clone(),
         None,
         None,
+        state.report_generator.clone(),
         &invoke_request,
     )
     .await?;
@@ -235,6 +237,7 @@ async fn handle_tools_call(
     #[cfg(not(feature = "orderbook"))]
     let response = crate::grpc::tools::route_tool(
         &state.binance_client,
+        None,
         None,
         None,
         None,
@@ -266,12 +269,13 @@ async fn handle_tools_call(
 /// Extract session ID from Mcp-Session-Id header
 fn extract_session_id(headers: &HeaderMap) -> Result<Option<Uuid>> {
     if let Some(header_value) = headers.get("mcp-session-id") {
-        let session_str = header_value
-            .to_str()
-            .map_err(|_| HttpTransportError::Session(super::session::SessionError::InvalidSessionId))?;
+        let session_str = header_value.to_str().map_err(|_| {
+            HttpTransportError::Session(super::session::SessionError::InvalidSessionId)
+        })?;
 
-        let session_id = Uuid::parse_str(session_str)
-            .map_err(|_| HttpTransportError::Session(super::session::SessionError::InvalidSessionId))?;
+        let session_id = Uuid::parse_str(session_str).map_err(|_| {
+            HttpTransportError::Session(super::session::SessionError::InvalidSessionId)
+        })?;
 
         Ok(Some(session_id))
     } else {

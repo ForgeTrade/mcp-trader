@@ -10,8 +10,7 @@ use anyhow::Result;
 use chrono::Utc;
 
 use crate::orderbook::analytics::{
-    storage::snapshot::OrderBookSnapshot,
-    types::MicrostructureHealth,
+    storage::snapshot::OrderBookSnapshot, types::MicrostructureHealth,
 };
 
 /// Calculate market microstructure health score
@@ -30,7 +29,10 @@ pub fn calculate_microstructure_health(
     bid_flow_rate: f64,
     ask_flow_rate: f64,
 ) -> Result<MicrostructureHealth> {
-    anyhow::ensure!(!snapshots.is_empty(), "Need at least one snapshot for health calculation");
+    anyhow::ensure!(
+        !snapshots.is_empty(),
+        "Need at least one snapshot for health calculation"
+    );
 
     // Component scoring (weights from FR-012, T051)
     let spread_stability_score = calculate_spread_stability_score(snapshots);
@@ -93,7 +95,8 @@ fn calculate_spread_stability_score(snapshots: &[OrderBookSnapshot]) -> f64 {
     }
 
     let mean: f64 = spreads.iter().sum::<f64>() / spreads.len() as f64;
-    let variance: f64 = spreads.iter().map(|s| (s - mean).powi(2)).sum::<f64>() / spreads.len() as f64;
+    let variance: f64 =
+        spreads.iter().map(|s| (s - mean).powi(2)).sum::<f64>() / spreads.len() as f64;
     let std_dev = variance.sqrt();
 
     let cv = if mean > 0.0 {
@@ -118,7 +121,9 @@ fn calculate_liquidity_depth_score(snapshots: &[OrderBookSnapshot]) -> f64 {
 
     let latest = &snapshots[snapshots.len() - 1];
 
-    let current_depth: f64 = latest.bids.iter()
+    let current_depth: f64 = latest
+        .bids
+        .iter()
         .chain(latest.asks.iter())
         .filter_map(|(_, qty)| qty.parse::<f64>().ok())
         .sum();
@@ -127,12 +132,14 @@ fn calculate_liquidity_depth_score(snapshots: &[OrderBookSnapshot]) -> f64 {
     let avg_depth: f64 = snapshots
         .iter()
         .map(|s| {
-            s.bids.iter()
+            s.bids
+                .iter()
                 .chain(s.asks.iter())
                 .filter_map(|(_, qty)| qty.parse::<f64>().ok())
                 .sum::<f64>()
         })
-        .sum::<f64>() / snapshots.len() as f64;
+        .sum::<f64>()
+        / snapshots.len() as f64;
 
     if avg_depth == 0.0 {
         return 0.0;
@@ -214,7 +221,8 @@ fn generate_recommendation(score: f64, level: &str) -> String {
         "Poor" => "Market conditions degraded - reduce position sizes and avoid market orders",
         "Critical" => "Market conditions unhealthy - avoid trading until conditions improve",
         _ => "Unknown health level",
-    }.to_string()
+    }
+    .to_string()
 }
 
 #[cfg(test)]
@@ -239,19 +247,25 @@ mod tests {
 
     #[test]
     fn test_calculate_update_rate_score() {
-        let snapshots_low = vec![OrderBookSnapshot {
-            bids: vec![],
-            asks: vec![],
-            update_id: 1,
-            timestamp: 0,
-        }; 5]; // 5 updates
+        let snapshots_low = vec![
+            OrderBookSnapshot {
+                bids: vec![],
+                asks: vec![],
+                update_id: 1,
+                timestamp: 0,
+            };
+            5
+        ]; // 5 updates
 
-        let snapshots_optimal = vec![OrderBookSnapshot {
-            bids: vec![],
-            asks: vec![],
-            update_id: 1,
-            timestamp: 0,
-        }; 50]; // 50 updates
+        let snapshots_optimal = vec![
+            OrderBookSnapshot {
+                bids: vec![],
+                asks: vec![],
+                update_id: 1,
+                timestamp: 0,
+            };
+            50
+        ]; // 50 updates
 
         assert!(calculate_update_rate_score(&snapshots_low) < 100.0);
         assert_eq!(calculate_update_rate_score(&snapshots_optimal), 100.0);

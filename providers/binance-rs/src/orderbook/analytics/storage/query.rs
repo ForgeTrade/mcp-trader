@@ -3,7 +3,7 @@
 //! Implements efficient time-range queries using RocksDB prefix scans.
 //! Target latency: <200ms for typical 60-second window queries.
 
-use super::{SnapshotStorage, snapshot::OrderBookSnapshot};
+use super::{snapshot::OrderBookSnapshot, SnapshotStorage};
 use anyhow::{Context, Result};
 use rocksdb::IteratorMode;
 

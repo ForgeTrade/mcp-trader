@@ -16,3 +16,7 @@ pub mod orderbook; // WebSocket orderbook manager
 
 #[cfg(feature = "mcp_server")]
 pub mod mcp; // MCP server implementation
+
+// Market data report generation (requires orderbook feature)
+#[cfg(feature = "orderbook")]
+pub mod report; // Unified market intelligence report generator

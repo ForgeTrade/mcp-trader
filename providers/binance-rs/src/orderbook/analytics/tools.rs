@@ -8,13 +8,16 @@
 //! - get_liquidity_vacuums: Low-volume price zones for SL placement
 
 use crate::orderbook::analytics::{
-    anomaly::{detect_quote_stuffing, detect_iceberg_orders, detect_flash_crash_risk},
+    anomaly::{detect_flash_crash_risk, detect_iceberg_orders, detect_quote_stuffing},
     flow::calculate_order_flow,
     health::calculate_microstructure_health,
     profile::{generate_volume_profile, identify_liquidity_vacuums},
     storage::{query::query_snapshots_in_window, SnapshotStorage},
     trade_stream::AggTrade,
-    types::{LiquidityVacuum, MarketMicrostructureAnomaly, MicrostructureHealth, OrderFlowSnapshot, VolumeProfile},
+    types::{
+        LiquidityVacuum, MarketMicrostructureAnomaly, MicrostructureHealth, OrderFlowSnapshot,
+        VolumeProfile,
+    },
 };
 use rust_decimal::Decimal;
 use schemars::JsonSchema;
@@ -122,7 +125,9 @@ pub struct GetVolumeProfileParams {
 }
 
 /// Custom deserializer that accepts both string and number for tick_size
-fn deserialize_optional_string_or_number<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+fn deserialize_optional_string_or_number<'de, D>(
+    deserializer: D,
+) -> Result<Option<String>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -350,14 +355,9 @@ pub async fn detect_market_anomalies(
     let end = Utc::now();
     let start = end - Duration::seconds(60); // Last 60 seconds
 
-    let snapshots = query_snapshots_in_window(
-        &storage,
-        symbol,
-        start.timestamp(),
-        end.timestamp(),
-    )
-    .await
-    .map_err(|e| AnalyticsToolError::StorageError(e.to_string()))?;
+    let snapshots = query_snapshots_in_window(&storage, symbol, start.timestamp(), end.timestamp())
+        .await
+        .map_err(|e| AnalyticsToolError::StorageError(e.to_string()))?;
 
     if snapshots.len() < 2 {
         return Ok(Vec::new());
@@ -409,14 +409,9 @@ pub async fn get_microstructure_health(
     let end = Utc::now();
     let start = end - Duration::seconds(60); // Last 60 seconds
 
-    let snapshots = query_snapshots_in_window(
-        &storage,
-        symbol,
-        start.timestamp(),
-        end.timestamp(),
-    )
-    .await
-    .map_err(|e| AnalyticsToolError::StorageError(e.to_string()))?;
+    let snapshots = query_snapshots_in_window(&storage, symbol, start.timestamp(), end.timestamp())
+        .await
+        .map_err(|e| AnalyticsToolError::StorageError(e.to_string()))?;
 
     if snapshots.len() < 2 {
         return Err(AnalyticsToolError::InsufficientData(format!(
@@ -495,14 +490,10 @@ pub async fn get_liquidity_vacuums(
     let start = end - Duration::hours(duration_hours as i64);
 
     // Query snapshots for the time period
-    let snapshots = query_snapshots_in_window(
-        &storage,
-        &symbol_upper,
-        start.timestamp(),
-        end.timestamp(),
-    )
-    .await
-    .map_err(|e| AnalyticsToolError::StorageError(e.to_string()))?;
+    let snapshots =
+        query_snapshots_in_window(&storage, &symbol_upper, start.timestamp(), end.timestamp())
+            .await
+            .map_err(|e| AnalyticsToolError::StorageError(e.to_string()))?;
 
     if snapshots.is_empty() {
         return Err(AnalyticsToolError::InsufficientData(format!(

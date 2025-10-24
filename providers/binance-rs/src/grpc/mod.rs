@@ -1,6 +1,8 @@
 use crate::binance::client::BinanceClient;
 use crate::error::Result;
 use crate::pb::{provider_server::Provider, *};
+#[cfg(feature = "orderbook")]
+use crate::report::ReportGenerator;
 use tonic::{Request, Response, Status};
 
 #[cfg(feature = "orderbook")]
@@ -32,6 +34,10 @@ pub struct BinanceProviderServer {
     /// Trade persistence storage (optional, enabled with orderbook_analytics feature)
     #[cfg(feature = "orderbook_analytics")]
     pub trade_storage: Arc<crate::orderbook::analytics::TradeStorage>,
+
+    /// Market data report generator
+    #[cfg(feature = "orderbook")]
+    pub report_generator: Arc<ReportGenerator>,
 }
 
 impl BinanceProviderServer {
@@ -42,52 +48,74 @@ impl BinanceProviderServer {
         #[cfg(all(feature = "orderbook", feature = "orderbook_analytics"))]
         {
             tracing::info!("OrderBook feature enabled - initializing WebSocket manager");
-            let orderbook_manager = Arc::new(OrderBookManager::new(Arc::new(binance_client.clone())));
+            let orderbook_manager =
+                Arc::new(OrderBookManager::new(Arc::new(binance_client.clone())));
 
             tracing::info!("Analytics feature enabled - initializing RocksDB storage");
             let data_path = std::env::var("ANALYTICS_DATA_PATH")
                 .unwrap_or_else(|_| "./data/analytics".to_string());
 
             let analytics_storage = Arc::new(
-                crate::orderbook::analytics::SnapshotStorage::new(&data_path)
-                    .map_err(|e| crate::error::ProviderError::Initialization(
-                        format!("Failed to initialize analytics storage: {}", e)
-                    ))?
+                crate::orderbook::analytics::SnapshotStorage::new(&data_path).map_err(|e| {
+                    crate::error::ProviderError::Initialization(format!(
+                        "Failed to initialize analytics storage: {}",
+                        e
+                    ))
+                })?,
             );
 
             tracing::info!("Analytics storage initialized at: {}", data_path);
 
             // Initialize TradeStorage (shares same RocksDB as SnapshotStorage)
-            let trade_storage = Arc::new(
-                crate::orderbook::analytics::TradeStorage::new(analytics_storage.db())
-            );
+            let trade_storage = Arc::new(crate::orderbook::analytics::TradeStorage::new(
+                analytics_storage.db(),
+            ));
 
             tracing::info!("Trade persistence storage initialized (shared RocksDB)");
+
+            // Initialize ReportGenerator
+            let report_generator = Arc::new(ReportGenerator::new(
+                Arc::new(binance_client.clone()),
+                orderbook_manager.clone(),
+                60, // 60 second cache TTL
+            ));
+
+            tracing::info!("Market data report generator initialized");
 
             Ok(Self {
                 binance_client,
                 orderbook_manager,
                 analytics_storage,
                 trade_storage,
+                report_generator,
             })
         }
 
         #[cfg(all(feature = "orderbook", not(feature = "orderbook_analytics")))]
         {
             tracing::info!("OrderBook feature enabled - initializing WebSocket manager");
-            let orderbook_manager = Arc::new(OrderBookManager::new(Arc::new(binance_client.clone())));
+            let orderbook_manager =
+                Arc::new(OrderBookManager::new(Arc::new(binance_client.clone())));
+
+            // Initialize ReportGenerator
+            let report_generator = Arc::new(ReportGenerator::new(
+                Arc::new(binance_client.clone()),
+                orderbook_manager.clone(),
+                60, // 60 second cache TTL
+            ));
+
+            tracing::info!("Market data report generator initialized");
 
             Ok(Self {
                 binance_client,
                 orderbook_manager,
+                report_generator,
             })
         }
 
         #[cfg(not(feature = "orderbook"))]
         {
-            Ok(Self {
-                binance_client,
-            })
+            Ok(Self { binance_client })
         }
     }
 }
@@ -126,8 +154,10 @@ impl Provider for BinanceProviderServer {
             Some(self.orderbook_manager.clone()),
             Some(self.analytics_storage.clone()),
             Some(self.trade_storage.clone()),
-            &req
-        ).await?;
+            Some(self.report_generator.clone()),
+            &req,
+        )
+        .await?;
 
         #[cfg(all(feature = "orderbook", not(feature = "orderbook_analytics")))]
         let response = tools::route_tool(
@@ -135,17 +165,14 @@ impl Provider for BinanceProviderServer {
             Some(self.orderbook_manager.clone()),
             None,
             None,
-            &req
-        ).await?;
+            Some(self.report_generator.clone()),
+            &req,
+        )
+        .await?;
 
         #[cfg(not(feature = "orderbook"))]
-        let response = tools::route_tool(
-            &self.binance_client,
-            None,
-            None,
-            None,
-            &req
-        ).await?;
+        let response =
+            tools::route_tool(&self.binance_client, None, None, None, None, &req).await?;
 
         Ok(Response::new(response))
     }

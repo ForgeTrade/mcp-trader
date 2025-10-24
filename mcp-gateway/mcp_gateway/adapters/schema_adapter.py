@@ -27,8 +27,7 @@ class SchemaAdapter:
 
                 # NEW: Trading normalizers (Feature 013 - FR-001 to FR-007)
                 "order": self._normalize_binance_order,
-                "account": self._normalize_binance_account,
-                "trade": self._normalize_binance_trade,
+                # Phase 7: account and trade normalizers removed (system now read-only)
 
                 # NEW: Market info normalizers (Feature 013 - FR-014 to FR-016)
                 "exchange_info": self._normalize_binance_exchange_info,
@@ -434,111 +433,9 @@ class SchemaAdapter:
 
         return normalized
 
-    def _normalize_binance_account(self, raw: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Normalize Binance account response to unified schema.
-        Implements FR-006 (get_account).
-
-        Input format (Binance account):
-        {
-            "makerCommission": 10,
-            "takerCommission": 10,
-            "canTrade": true,
-            "canWithdraw": true,
-            "canDeposit": true,
-            "updateTime": 1697048400000,
-            "balances": [
-                {"asset": "BTC", "free": "1.234", "locked": "0.01"},
-                {"asset": "USDT", "free": "10000.00", "locked": "500.00"}
-            ]
-        }
-
-        Output format (unified):
-        {
-            "can_trade": true,
-            "can_withdraw": true,
-            "balances": [
-                {"asset": "BTC", "free": 1.234, "locked": 0.01, "total": 1.244},
-                {"asset": "USDT", "free": 10000.00, "locked": 500.00, "total": 10500.00}
-            ],
-            "timestamp": 1697048400000,
-            ...
-        }
-        """
-        # Normalize balances
-        balances = []
-        for balance in raw.get("balances", []):
-            free = float(balance["free"])
-            locked = float(balance["locked"])
-            total = free + locked
-
-            # Only include non-zero balances
-            if total > 0:
-                balances.append({
-                    "asset": balance["asset"],
-                    "free": free,
-                    "locked": locked,
-                    "total": total
-                })
-
-        normalized = {
-            "can_trade": raw.get("canTrade", False),
-            "can_withdraw": raw.get("canWithdraw", False),
-            "can_deposit": raw.get("canDeposit", False),
-            "balances": balances,
-            "timestamp": raw.get("updateTime", int(time.time() * 1000)),
-        }
-
-        return normalized
-
-    def _normalize_binance_trade(self, raw: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Normalize Binance trade response to unified schema.
-        Implements FR-007 (get_my_trades).
-
-        Input format (Binance trade):
-        {
-            "id": 123456,
-            "symbol": "BTCUSDT",
-            "orderId": 12345,
-            "price": "43250.50",
-            "qty": "0.01",
-            "quoteQty": "432.505",
-            "commission": "0.432505",
-            "commissionAsset": "USDT",
-            "time": 1697048400000,
-            "isBuyer": true
-        }
-
-        Output format (unified):
-        {
-            "trade_id": "123456",
-            "order_id": "12345",
-            "instrument": "BTCUSDT",
-            "side": "BUY",
-            "price": 43250.50,
-            "quantity": 0.01,
-            "quote_quantity": 432.505,
-            "fee": 0.432505,
-            "fee_asset": "USDT",
-            "timestamp": 1697048400000,
-            ...
-        }
-        """
-        normalized = {
-            "trade_id": str(raw["id"]),
-            "order_id": str(raw["orderId"]),
-            "instrument": raw["symbol"],
-            "side": "BUY" if raw.get("isBuyer", False) else "SELL",
-            "price": float(raw["price"]),
-            "quantity": float(raw["qty"]),
-            "quote_quantity": float(raw["quoteQty"]),
-            "fee": float(raw.get("commission", 0)),
-            "fee_asset": raw.get("commissionAsset", ""),
-            "timestamp": raw["time"],
-        }
-
-        return normalized
+    # Phase 7: Order management normalizers removed per FR-001
+    # Removed: _normalize_binance_account(), _normalize_binance_trade()
+    # This system is now read-only market data analysis only
 
     # ==================== NEW: Market Info Normalizers (Feature 013) ====================
 

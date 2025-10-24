@@ -99,7 +99,11 @@ pub async fn generate_volume_profile(
 ///
 /// # Returns
 /// Adaptive bin size (Decimal)
-fn adaptive_bin_size(price_min: Decimal, price_max: Decimal, exchange_tick_size: Decimal) -> Decimal {
+fn adaptive_bin_size(
+    price_min: Decimal,
+    price_max: Decimal,
+    exchange_tick_size: Decimal,
+) -> Decimal {
     let price_range = price_max - price_min;
     let range_based = price_range / Decimal::from(100);
     let tick_based = exchange_tick_size * Decimal::from(10);
@@ -126,10 +130,9 @@ fn bin_trades_by_price(
     let mut bins_map: HashMap<Decimal, (Decimal, u64)> = HashMap::new();
 
     for trade in trades {
-        let price = Decimal::from_str(&trade.price)
-            .context("Failed to parse trade price")?;
-        let quantity = Decimal::from_str(&trade.quantity)
-            .context("Failed to parse trade quantity")?;
+        let price = Decimal::from_str(&trade.price).context("Failed to parse trade price")?;
+        let quantity =
+            Decimal::from_str(&trade.quantity).context("Failed to parse trade quantity")?;
 
         // Calculate bin center
         let bin_index = ((price - price_min) / bin_size).floor();
@@ -165,7 +168,10 @@ fn bin_trades_by_price(
 /// # Returns
 /// (POC price, VAH price, VAL price)
 fn find_poc_vah_val(bins: &[VolumeBin]) -> Result<(Decimal, Decimal, Decimal)> {
-    anyhow::ensure!(!bins.is_empty(), "Cannot calculate POC/VAH/VAL from empty bins");
+    anyhow::ensure!(
+        !bins.is_empty(),
+        "Cannot calculate POC/VAH/VAL from empty bins"
+    );
 
     // Find POC (max volume bin)
     let poc_bin = bins
@@ -251,14 +257,16 @@ fn create_vacuum(
 
 /// Find min and max prices from trade data
 fn find_price_range(trades: &[AggTrade]) -> Result<(Decimal, Decimal)> {
-    anyhow::ensure!(!trades.is_empty(), "Cannot find price range from empty trades");
+    anyhow::ensure!(
+        !trades.is_empty(),
+        "Cannot find price range from empty trades"
+    );
 
     let mut price_min = Decimal::MAX;
     let mut price_max = Decimal::MIN;
 
     for trade in trades {
-        let price = Decimal::from_str(&trade.price)
-            .context("Failed to parse trade price")?;
+        let price = Decimal::from_str(&trade.price).context("Failed to parse trade price")?;
         price_min = std::cmp::min(price_min, price);
         price_max = std::cmp::max(price_max, price);
     }
@@ -286,7 +294,9 @@ pub fn identify_order_walls(snapshot: &OrderBookSnapshot) -> Vec<(Decimal, Decim
     let mut walls = Vec::new();
 
     // Calculate median bid volume
-    let bid_volumes: Vec<Decimal> = snapshot.bids.iter()
+    let bid_volumes: Vec<Decimal> = snapshot
+        .bids
+        .iter()
         .take(20)
         .filter_map(|(_, qty)| Decimal::from_str(qty).ok())
         .collect();
@@ -300,10 +310,8 @@ pub fn identify_order_walls(snapshot: &OrderBookSnapshot) -> Vec<(Decimal, Decim
 
     // Identify bid walls
     for (price_str, qty_str) in snapshot.bids.iter().take(20) {
-        if let (Ok(price), Ok(volume)) = (
-            Decimal::from_str(price_str),
-            Decimal::from_str(qty_str)
-        ) {
+        if let (Ok(price), Ok(volume)) = (Decimal::from_str(price_str), Decimal::from_str(qty_str))
+        {
             if volume > bid_threshold {
                 walls.push((price, volume, "bid"));
             }
@@ -311,7 +319,9 @@ pub fn identify_order_walls(snapshot: &OrderBookSnapshot) -> Vec<(Decimal, Decim
     }
 
     // Calculate median ask volume
-    let ask_volumes: Vec<Decimal> = snapshot.asks.iter()
+    let ask_volumes: Vec<Decimal> = snapshot
+        .asks
+        .iter()
         .take(20)
         .filter_map(|(_, qty)| Decimal::from_str(qty).ok())
         .collect();
@@ -325,10 +335,8 @@ pub fn identify_order_walls(snapshot: &OrderBookSnapshot) -> Vec<(Decimal, Decim
 
     // Identify ask walls
     for (price_str, qty_str) in snapshot.asks.iter().take(20) {
-        if let (Ok(price), Ok(volume)) = (
-            Decimal::from_str(price_str),
-            Decimal::from_str(qty_str)
-        ) {
+        if let (Ok(price), Ok(volume)) = (Decimal::from_str(price_str), Decimal::from_str(qty_str))
+        {
             if volume > ask_threshold {
                 walls.push((price, volume, "ask"));
             }
@@ -464,17 +472,17 @@ pub fn recommend_stop_placement(
 ///
 /// # Returns
 /// Vector of LiquidityVacuum detected in current book
-pub fn identify_liquidity_vacuums(snapshot: &OrderBookSnapshot, symbol: &str) -> Result<Vec<LiquidityVacuum>> {
-
+pub fn identify_liquidity_vacuums(
+    snapshot: &OrderBookSnapshot,
+    symbol: &str,
+) -> Result<Vec<LiquidityVacuum>> {
     // Convert order book to volume bins
     let mut all_levels = Vec::new();
 
     // Collect all bid levels
     for (price_str, qty_str) in &snapshot.bids {
-        if let (Ok(price), Ok(volume)) = (
-            Decimal::from_str(price_str),
-            Decimal::from_str(qty_str)
-        ) {
+        if let (Ok(price), Ok(volume)) = (Decimal::from_str(price_str), Decimal::from_str(qty_str))
+        {
             all_levels.push(VolumeBin {
                 price_level: price,
                 volume,
@@ -485,10 +493,8 @@ pub fn identify_liquidity_vacuums(snapshot: &OrderBookSnapshot, symbol: &str) ->
 
     // Collect all ask levels
     for (price_str, qty_str) in &snapshot.asks {
-        if let (Ok(price), Ok(volume)) = (
-            Decimal::from_str(price_str),
-            Decimal::from_str(qty_str)
-        ) {
+        if let (Ok(price), Ok(volume)) = (Decimal::from_str(price_str), Decimal::from_str(qty_str))
+        {
             all_levels.push(VolumeBin {
                 price_level: price,
                 volume,
@@ -511,7 +517,10 @@ pub fn identify_liquidity_vacuums(snapshot: &OrderBookSnapshot, symbol: &str) ->
 /// Internal implementation of liquidity vacuum detection
 ///
 /// Shared logic between trade-based and orderbook-based vacuum detection
-fn identify_liquidity_vacuums_impl(symbol: &str, bins: &[VolumeBin]) -> Result<Vec<LiquidityVacuum>> {
+fn identify_liquidity_vacuums_impl(
+    symbol: &str,
+    bins: &[VolumeBin],
+) -> Result<Vec<LiquidityVacuum>> {
     if bins.is_empty() {
         return Ok(Vec::new());
     }

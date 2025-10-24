@@ -3,3 +3,8 @@
 
 // Include the generated code
 tonic::include_proto!("provider.v1");
+
+// Market report service protocol
+pub mod market_report {
+    tonic::include_proto!("binance.market_report");
+}
