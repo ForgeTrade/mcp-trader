@@ -42,7 +42,27 @@ impl Default for ReportOptions {
 }
 
 impl ReportOptions {
-    /// Validate options and return errors if invalid
+    /// Validates the report options and returns an error if any option is invalid.
+    ///
+    /// # Validation Rules
+    /// - `volume_window_hours`: Must be between 1 and 168 (1 hour to 7 days)
+    /// - `orderbook_levels`: Must be between 1 and 100
+    ///
+    /// # Returns
+    /// - `Ok(())` if all options are valid
+    /// - `Err(String)` with descriptive error message if any option is invalid
+    ///
+    /// # Example
+    /// ```
+    /// use binance_provider::report::ReportOptions;
+    ///
+    /// let options = ReportOptions {
+    ///     volume_window_hours: Some(48),
+    ///     orderbook_levels: Some(50),
+    ///     ..Default::default()
+    /// };
+    /// assert!(options.validate().is_ok());
+    /// ```
     pub fn validate(&self) -> Result<(), String> {
         if let Some(hours) = self.volume_window_hours {
             if hours < 1 || hours > 168 {
@@ -65,9 +85,37 @@ impl ReportOptions {
         Ok(())
     }
 
-    /// Generate cache key suffix from options
-    /// P0 Fix: Include options in cache key to prevent wrong cached reports
-    /// being returned for different option combinations
+    /// Generates a deterministic cache key suffix from the report options.
+    ///
+    /// This method creates a unique string representation of the options that is used
+    /// as part of the cache key. Different option combinations produce different suffixes,
+    /// ensuring cached reports are isolated by their configuration.
+    ///
+    /// # Cache Key Format
+    /// `"sections:{sections};volume:{hours};levels:{levels}"`
+    ///
+    /// Where:
+    /// - `sections`: Sorted comma-separated list of section names, or "all"
+    /// - `hours`: Volume window in hours (default: 24)
+    /// - `levels`: Order book depth levels (default: 20)
+    ///
+    /// # Example
+    /// ```
+    /// use binance_provider::report::ReportOptions;
+    ///
+    /// let options = ReportOptions {
+    ///     include_sections: Some(vec!["price_overview".to_string(), "liquidity_analysis".to_string()]),
+    ///     volume_window_hours: Some(48),
+    ///     orderbook_levels: Some(50),
+    /// };
+    /// let suffix = options.to_cache_key_suffix();
+    /// assert!(suffix.contains("sections:liquidity_analysis,price_overview"));
+    /// assert!(suffix.contains("volume:48"));
+    /// assert!(suffix.contains("levels:50"));
+    /// ```
+    ///
+    /// # Implementation Note
+    /// Section names are sorted to ensure deterministic keys regardless of input order.
     pub fn to_cache_key_suffix(&self) -> String {
         // Sort include_sections for deterministic cache key
         let sections_key = match &self.include_sections {
@@ -91,7 +139,25 @@ impl ReportOptions {
         )
     }
 
-    /// Generate full cache key combining symbol and options
+    /// Generates a complete cache key by combining symbol and options.
+    ///
+    /// This is a convenience method that combines the symbol with the options suffix
+    /// to create a fully-qualified cache key.
+    ///
+    /// # Arguments
+    /// * `symbol` - The trading pair symbol (e.g., "BTCUSDT")
+    ///
+    /// # Returns
+    /// A cache key in the format: `"{SYMBOL}:{options_suffix}"`
+    ///
+    /// # Example
+    /// ```
+    /// use binance_provider::report::ReportOptions;
+    ///
+    /// let options = ReportOptions::default();
+    /// let key = options.to_cache_key("BTCUSDT");
+    /// assert!(key.starts_with("BTCUSDT:"));
+    /// ```
     pub fn to_cache_key(&self, symbol: &str) -> String {
         format!("{}:{}", symbol, self.to_cache_key_suffix())
     }
@@ -186,6 +252,17 @@ pub struct ReportCache {
 }
 
 impl ReportCache {
+    /// Creates a new report cache with the specified time-to-live (TTL).
+    ///
+    /// # Arguments
+    /// * `ttl_secs` - Cache entry lifetime in seconds (typically 60s for Feature 018)
+    ///
+    /// # Example
+    /// ```
+    /// use binance_provider::report::ReportCache;
+    ///
+    /// let cache = ReportCache::new(60); // 60-second TTL
+    /// ```
     pub fn new(ttl_secs: u64) -> Self {
         Self {
             cache: Mutex::new(HashMap::new()),
@@ -193,6 +270,29 @@ impl ReportCache {
         }
     }
 
+    /// Retrieves a cached report if it exists and is not expired.
+    ///
+    /// If the cached entry has expired, it is automatically removed from the cache.
+    ///
+    /// # Arguments
+    /// * `symbol` - The cache key (typically includes symbol and options)
+    ///
+    /// # Returns
+    /// - `Some(MarketReport)` if a valid cached entry exists
+    /// - `None` if no entry exists or the entry has expired
+    ///
+    /// # Thread Safety
+    /// This method is thread-safe and uses internal locking.
+    ///
+    /// # Example
+    /// ```
+    /// use binance_provider::report::ReportCache;
+    ///
+    /// let cache = ReportCache::new(60);
+    /// if let Some(report) = cache.get("BTCUSDT:sections:all;volume:24;levels:20") {
+    ///     println!("Cache hit!");
+    /// }
+    /// ```
     pub fn get(&self, symbol: &str) -> Option<MarketReport> {
         let mut cache = self.cache.lock().unwrap();
         if let Some((report, timestamp)) = cache.get(symbol) {
@@ -204,11 +304,54 @@ impl ReportCache {
         None
     }
 
+    /// Stores a report in the cache with the current timestamp.
+    ///
+    /// If an entry with the same key already exists, it will be replaced.
+    ///
+    /// # Arguments
+    /// * `symbol` - The cache key (typically includes symbol and options)
+    /// * `report` - The market report to cache
+    ///
+    /// # Thread Safety
+    /// This method is thread-safe and uses internal locking.
+    ///
+    /// # Example
+    /// ```
+    /// use binance_provider::report::{ReportCache, MarketReport};
+    ///
+    /// let cache = ReportCache::new(60);
+    /// let report = MarketReport {
+    ///     markdown_content: "# Report".to_string(),
+    ///     symbol: "BTCUSDT".to_string(),
+    ///     generated_at: 1729780000000,
+    ///     data_age_ms: 100,
+    ///     failed_sections: vec![],
+    ///     generation_time_ms: 245,
+    /// };
+    /// cache.set("BTCUSDT:sections:all;volume:24;levels:20".to_string(), report);
+    /// ```
     pub fn set(&self, symbol: String, report: MarketReport) {
         let mut cache = self.cache.lock().unwrap();
         cache.insert(symbol, (report, Instant::now()));
     }
 
+    /// Invalidates all cached reports for a symbol across all option combinations.
+    ///
+    /// Since cache keys include both symbol and options (e.g., "BTCUSDT:sections:all;..."),
+    /// this method removes all entries that start with the symbol prefix, effectively
+    /// clearing all cached variants for the symbol.
+    ///
+    /// # Arguments
+    /// * `symbol` - The trading pair symbol (e.g., "BTCUSDT")
+    ///
+    /// # Example
+    /// ```
+    /// use binance_provider::report::ReportCache;
+    ///
+    /// let cache = ReportCache::new(60);
+    /// // ... populate cache with BTCUSDT reports ...
+    /// cache.invalidate("BTCUSDT"); // Clears all BTCUSDT-related entries
+    /// ```
     pub fn invalidate(&self, symbol: &str) {
         // P0 Fix: Clear all cache entries for this symbol (all option combinations)
         // Since cache keys now include options, we need to remove all keys with this symbol prefix

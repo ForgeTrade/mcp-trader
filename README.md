@@ -2,6 +2,20 @@
 
 Model Context Protocol (MCP) gateway for orchestrating multiple capability providers.
 
+## Breaking Changes
+
+**⚠️ Version 0.2.0 (2025-10-24) - System Now Read-Only**
+
+This system has been transformed from a hybrid read/write trading client into a **read-only market data analysis tool**. All order management functionality has been removed.
+
+**What Changed**:
+- ❌ All order placement, cancellation, and query methods removed
+- ❌ Account information and trade history retrieval removed
+- ✅ Unified market data report API introduced
+- ✅ All market data analysis features preserved and enhanced
+
+See [CHANGELOG.md](CHANGELOG.md) for complete migration guide.
+
 ## Overview
 
 This system implements a distributed MCP architecture where a Python gateway orchestrates multiple language-specific providers via gRPC. Each provider exposes tools, resources, and prompts through a unified interface.
@@ -20,7 +34,7 @@ AI Clients
     └→ ChatGPT (SSE transport) 🆕
             ↓
         SSE Gateway (Python)
-            └→ binance-rs (Rust provider) - All 21 tools
+            └→ binance-rs (Rust provider) - Unified market data reports
 ```
 
 ### Production Deployment
@@ -28,7 +42,8 @@ AI Clients
 **ChatGPT MCP Server** (SSE transport):
 - **URL**: https://mcp-gateway.thevibe.trading/sse/
 - **Status**: ✅ Live in production
-- **Features**: Exposes all 21 Binance tools directly to ChatGPT
+- **Version**: 0.2.0 (Read-only market data analysis)
+- **Features**: Unified market intelligence reports with advanced analytics
 - **Transport**: Server-Sent Events (SSE) - required for ChatGPT integration
 - **Documentation**: See [ChatGPT Integration Guide](providers/binance-rs/CHATGPT_INTEGRATION.md)
 
@@ -49,28 +64,36 @@ AI Clients
 ### binance-rs ⭐ **Production Ready**
 - **Language**: Rust
 - **Port**: 50053
-- **Status**: ✅ **Fully Implemented** (All features complete)
+- **Status**: ✅ **Fully Implemented** (Read-only market data analysis)
+- **Version**: 0.2.0
 
 **Capabilities**:
-- **21 Tools**: Cryptocurrency trading & advanced analytics
-  - 🔸 Market data (6 tools): Real-time ticker, order book, trades, klines, exchange info
-  - 🔸 Account management (2 tools): Live balances, trade history
-  - 🔸 Order execution (5 tools): Place, cancel, query orders
-  - 🔸 OrderBook analysis (3 tools): WebSocket-powered L1/L2 metrics, health monitoring
-  - 🔸 **Advanced Analytics (5 tools)**: 🆕
-    - `get_order_flow` - Bid/ask pressure tracking over time windows
-    - `get_volume_profile` - Volume distribution histogram (POC/VAH/VAL)
-    - `detect_market_anomalies` - Quote stuffing, icebergs, flash crash risk
-    - `get_microstructure_health` - Composite market health scoring
-    - `get_liquidity_vacuums` - Low-volume price zones for stop-loss placement
-- **4 Resources**: Markdown-formatted data snapshots (with **LIVE data**)
+- **1 Primary Tool**: 🆕 **Unified Market Data Report**
+  - `generate_market_report` - Comprehensive market intelligence combining 8+ data sections
+    - Price Overview (24h statistics with trend indicators)
+    - Order Book Metrics (spread, microprice, imbalance)
+    - Liquidity Analysis (walls, volume profile, vacuums)
+    - Market Anomalies (detection with severity badges)
+    - Microstructure Health (health scores and component status)
+    - Data Health Status (WebSocket connectivity, freshness)
+    - Performance: 60s caching, <500ms cold generation, <3ms cached
+
+- **11 Individual Analytics Tools** (legacy, superseded by unified report):
+  - `get_ticker` - 24h price statistics
+  - `orderbook_l1` / `orderbook_l2` - Order book snapshots
+  - `get_recent_trades` - Trade history
+  - `get_order_flow` - Bid/ask pressure tracking
+  - `get_volume_profile` - Volume distribution (POC/VAH/VAL)
+  - `detect_market_anomalies` - Unusual pattern detection
+  - `get_microstructure_health` - Market health scoring
+  - `get_liquidity_vacuums` - Low-volume price zone detection
+  - `orderbook_health` - Real-time order book health metrics
+
+- **1 Resource**: Markdown-formatted data snapshot
   - `binance://market/{SYMBOL}` - Real-time market summary
-  - `binance://account/balances` - Current account balances
-  - `binance://account/trades/{SYMBOL}` - Recent trade history
-  - `binance://orders/{STATUS}` - Order tracking
-- **2 Prompts**: AI-ready analysis templates (with **LIVE data**)
-  - `trading-analysis` - Market analysis with real prices/volumes
-  - `portfolio-risk` - Portfolio assessment with actual holdings
+
+- **1 Prompt**: AI-ready analysis template
+  - `trading-analysis` - Market analysis with live context
 
 **Features**:
 - ✅ Live WebSocket order book streaming (sub-200ms latency)
@@ -89,17 +112,35 @@ See [providers/binance-rs/README.md](providers/binance-rs/README.md) for complet
 The MCP gateway integrates seamlessly with Claude Code. Once configured, you can ask natural language questions:
 
 ```
-You: "What's the current Bitcoin price?"
-Claude: [Uses binance.get_ticker tool]
-Response: BTC is currently trading at $106,841.00, up 0.43% in the last 24h
+You: "Generate a comprehensive market report for Bitcoin"
+Claude: [Uses binance.generate_market_report tool]
+Response:
+# Market Data Report - BTCUSDT
+Generated: 2025-10-24 12:00:00 UTC 🟢
 
-You: "Show me the ETHUSDT order book metrics"
-Claude: [Uses binance.orderbook_l1 tool via WebSocket]
-Response: ETH/USDT spread: 2.5 bps, microprice: $4,125.50, imbalance: 62% bid
+## Price Overview
+- Current Price: $106,841.00 📈
+- 24h Change: +0.43% (+$459.00)
+- 24h High/Low: $107,200.00 / $105,800.00
+- Volume: 1,234.56 BTC ($131.8M)
 
-You: "Analyze trading opportunities for Bitcoin on the 1-hour timeframe"
+## Order Book Metrics
+- Spread: 0.01% (1.0 bps)
+- Microprice: $106,840.50
+- Imbalance: 58% bid-heavy 📊
+
+## Liquidity Analysis
+- Buy Wall: $106,500 💪 Strong (125.5 BTC)
+- Volume Profile POC: $106,750
+[... 5 more sections ...]
+
+You: "Show me ETHUSDT with just price and liquidity sections"
+Claude: [Uses generate_market_report with custom options]
+Response: [Markdown report with only requested sections]
+
+You: "Analyze trading opportunities for Bitcoin"
 Claude: [Uses trading-analysis prompt with live market data]
-Response: [Detailed analysis with real prices, volumes, and order book depth]
+Response: [Detailed analysis combining report data with AI insights]
 ```
 
 **Setup for Claude Code**:
@@ -114,7 +155,7 @@ claude  # MCP gateway starts automatically
 
 ### Using with ChatGPT 🤖 🆕
 
-The MCP gateway is now available for ChatGPT via SSE transport. All 21 Binance tools are accessible!
+The MCP gateway is now available for ChatGPT via SSE transport. The unified market data report provides comprehensive market intelligence!
 
 **Setup for ChatGPT**:
 1. Enable **Developer Mode** in ChatGPT (Plus/Pro required)
@@ -125,18 +166,19 @@ The MCP gateway is now available for ChatGPT via SSE transport. All 21 Binance t
 
 **Example Usage**:
 ```
-You: "What's the current BTC price and order book health?"
-ChatGPT: [Uses binance_get_ticker and binance_orderbook_l1 tools]
-Response: Bitcoin is at $106,841.00 (+0.43%). Order book spread: 0.01%,
-          bid-ask imbalance: 58% bid-heavy, microprice: $106,840.50
+You: "Generate a full market report for BTCUSDT"
+ChatGPT: [Uses binance_generate_market_report tool]
+Response: [Complete markdown report with 8 sections: price, orderbook,
+          liquidity, anomalies, health, etc. - cached for 60s]
 
-You: "Analyze volume profile for ETHUSDT"
-ChatGPT: [Uses binance_get_volume_profile tool]
-Response: [Detailed volume distribution analysis with POC, VAH, VAL]
+You: "Show me just the price and liquidity analysis for ETHUSDT"
+ChatGPT: [Uses binance_generate_market_report with options]
+Request: {"symbol": "ETHUSDT", "options": {"include_sections": ["price_overview", "liquidity_analysis"]}}
+Response: [Customized report with only requested sections]
 
-You: "Detect any market anomalies for BTCUSDT"
-ChatGPT: [Uses binance_detect_market_anomalies tool]
-Response: [Analysis of unusual order book patterns, volume spikes, etc.]
+You: "What's the order book health for BTCUSDT?"
+ChatGPT: [Uses binance_orderbook_health tool - legacy individual tool]
+Response: [Quick health metrics snapshot]
 ```
 
 See [CHATGPT_INTEGRATION.md](providers/binance-rs/CHATGPT_INTEGRATION.md) for detailed setup guide.
@@ -206,6 +248,89 @@ export BINANCE_API_SECRET="your_api_secret"
 export BINANCE_BASE_URL="https://testnet.binance.vision"
 ```
 
+## API Reference
+
+### Unified Market Data Report
+
+**Tool**: `generate_market_report`
+
+Generates comprehensive market intelligence reports combining 8+ data sections with smart caching and customization options.
+
+**Parameters**:
+```python
+{
+  "symbol": str,              # Required: Trading pair (e.g., "BTCUSDT", "ETHUSDT")
+  "venue": str,               # Optional: Exchange venue (default: "binance")
+  "options": {                # Optional: Report customization
+    "include_sections": list[str],  # Sections to include (default: all)
+    "volume_window_hours": int,     # Volume analysis window (default: 24)
+    "orderbook_levels": int         # Order book depth (default: 20)
+  }
+}
+```
+
+**Available Sections**:
+- `"price_overview"` - 24h price statistics with trend indicators
+- `"orderbook_metrics"` - Spread, microprice, bid-ask imbalance
+- `"liquidity_analysis"` - Liquidity walls, volume profile, vacuums
+- `"market_microstructure"` - Order flow analysis (placeholder)
+- `"market_anomalies"` - Anomaly detection with severity badges
+- `"microstructure_health"` - Health scores and component status
+- `"data_health"` - WebSocket connectivity and data freshness
+
+**Response**:
+```python
+{
+  "markdown_content": str,     # Complete formatted report
+  "symbol": str,               # Trading pair
+  "generated_at": int,         # Unix timestamp (milliseconds)
+  "data_age_ms": int,          # Data freshness indicator
+  "failed_sections": list[str],# Sections that failed to generate
+  "generation_time_ms": int    # Report generation time
+}
+```
+
+**Examples**:
+
+Full report (all sections):
+```python
+await client.generate_market_report(symbol="BTCUSDT")
+```
+
+Custom report (specific sections):
+```python
+await client.generate_market_report(
+    symbol="ETHUSDT",
+    options={
+        "include_sections": ["price_overview", "liquidity_analysis"],
+        "volume_window_hours": 48,
+        "orderbook_levels": 50
+    }
+)
+```
+
+**Performance**:
+- Cold generation: <500ms
+- Cached retrieval: <3ms
+- Cache TTL: 60 seconds
+- Graceful degradation for missing data sources
+
+**Migration from v0.1.0**:
+
+If you were using individual tools:
+```python
+# BEFORE (v0.1.0 - no longer works)
+ticker = await client.get_ticker(symbol="BTCUSDT")
+account = await client.get_account()
+trades = await client.get_my_trades(symbol="BTCUSDT")
+
+# AFTER (v0.2.0 - unified report)
+report = await client.generate_market_report(symbol="BTCUSDT")
+# Access report.markdown_content for formatted output
+```
+
+See [CHANGELOG.md](CHANGELOG.md) for complete migration guide.
+
 ## Testing
 
 ```bash
@@ -250,10 +375,11 @@ mcp-trader/
 ├── providers/
 │   ├── hello-go/        # Go demo provider
 │   ├── hello-rs/        # Rust demo provider
-│   └── binance-rs/      # Binance trading provider (21 tools)
+│   └── binance-rs/      # Binance market data provider (read-only)
 │       └── src/
+│           ├── report/       # Unified report generator 🆕
 │           └── orderbook/
-│               └── analytics/  # Advanced analytics module 🆕
+│               └── analytics/  # Advanced analytics module
 ├── infra/               # Production deployment 🆕
 │   ├── deploy-chatgpt.sh        # ChatGPT SSE deployment script
 │   ├── binance-provider.service # Systemd service
@@ -269,17 +395,27 @@ mcp-trader/
 
 ### Binance Provider
 - [Binance Provider Guide](providers/binance-rs/README.md) - Complete provider documentation
-- [ChatGPT Integration Guide](providers/binance-rs/CHATGPT_INTEGRATION.md) - SSE setup for ChatGPT 🆕
+- [ChatGPT Integration Guide](providers/binance-rs/CHATGPT_INTEGRATION.md) - SSE setup for ChatGPT
 - [Integration Testing](providers/binance-rs/INTEGRATION_TESTS_COMPLETE.md) - Test results
 
 ### Gateway & Deployment
-- [Manual Testing Guide](mcp-gateway/MANUAL_TESTING_GUIDE.md) - Testing SSE endpoints 🆕
-- [Deploy Script](infra/deploy-chatgpt.sh) - Production deployment automation 🆕
+- [Manual Testing Guide](mcp-gateway/MANUAL_TESTING_GUIDE.md) - Testing SSE endpoints
+- [Deploy Script](infra/deploy-chatgpt.sh) - Production deployment automation
+- [Deployment Summary](DEPLOYMENT_P1_FIXES.md) - Latest production deployment
 
 ### Specifications
-- [Specification](specs/002-binance-provider-integration/spec.md)
-- [Implementation Plan](specs/002-binance-provider-integration/plan.md)
-- [Task Breakdown](specs/002-binance-provider-integration/tasks.md)
+- **Feature 018: Unified Market Data Report** 🆕
+  - [Specification](specs/018-market-data-report/spec.md)
+  - [Implementation Plan](specs/018-market-data-report/plan.md)
+  - [Task Breakdown](specs/018-market-data-report/tasks.md)
+  - [Quickstart Guide](specs/018-market-data-report/quickstart.md)
+- Feature 002: Binance Provider Integration
+  - [Specification](specs/002-binance-provider-integration/spec.md)
+  - [Implementation Plan](specs/002-binance-provider-integration/plan.md)
+  - [Task Breakdown](specs/002-binance-provider-integration/tasks.md)
+
+### Changelog
+- [CHANGELOG.md](CHANGELOG.md) - Version history and migration guides
 
 ## License
 

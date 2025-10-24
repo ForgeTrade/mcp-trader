@@ -16,7 +16,24 @@ pub struct ReportGenerator {
 }
 
 impl ReportGenerator {
-    /// Create new report generator with dependencies injected
+    /// Creates a new report generator with dependency injection.
+    ///
+    /// # Arguments
+    /// * `binance_client` - Shared Binance API client for market data fetching
+    /// * `orderbook_manager` - Shared order book manager for WebSocket-powered data
+    /// * `cache_ttl_secs` - Cache time-to-live in seconds (typically 60s)
+    ///
+    /// # Example
+    /// ```no_run
+    /// use std::sync::Arc;
+    /// use binance_provider::report::ReportGenerator;
+    /// use binance_provider::binance::BinanceClient;
+    /// use binance_provider::orderbook::OrderBookManager;
+    ///
+    /// let client = Arc::new(BinanceClient::new(/* ... */));
+    /// let orderbook = Arc::new(OrderBookManager::new(/* ... */));
+    /// let generator = ReportGenerator::new(client, orderbook, 60);
+    /// ```
     pub fn new(
         binance_client: Arc<BinanceClient>,
         orderbook_manager: Arc<OrderBookManager>,
@@ -29,7 +46,58 @@ impl ReportGenerator {
         }
     }
 
-    /// Generate market report for symbol with options
+    /// Generates a comprehensive market intelligence report for the specified symbol.
+    ///
+    /// This is the primary method for Feature 018. It orchestrates data fetching from
+    /// multiple sources in parallel, builds the requested sections, applies caching,
+    /// and returns a complete markdown-formatted report.
+    ///
+    /// # Arguments
+    /// * `symbol` - Trading pair (e.g., "BTCUSDT", "ETHUSDT")
+    /// * `options` - Report customization options (sections, volume window, depth)
+    ///
+    /// # Returns
+    /// * `Ok(MarketReport)` - Complete report with markdown content and metadata
+    /// * `Err(String)` - Validation error if options are invalid
+    ///
+    /// # Behavior
+    /// 1. Validates the provided options
+    /// 2. Checks cache for existing report matching symbol + options
+    /// 3. If cache miss, fetches data from Binance API and WebSocket streams in parallel
+    /// 4. Builds requested report sections (or all sections if unspecified)
+    /// 5. Caches the generated report for 60 seconds
+    /// 6. Returns the report with generation metadata
+    ///
+    /// # Performance
+    /// - **Cache hit**: <3ms (cached report returned with original metadata)
+    /// - **Cache miss**: <500ms (parallel data fetch + report generation)
+    /// - **Cache TTL**: 60 seconds
+    ///
+    /// # Graceful Degradation
+    /// If individual data sources fail, the corresponding sections will show
+    /// "[Data Unavailable]" messages instead of failing the entire report.
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use binance_provider::report::{ReportGenerator, ReportOptions};
+    /// # async fn example(generator: &ReportGenerator) -> Result<(), String> {
+    /// // Full report with all sections
+    /// let report = generator.generate_report("BTCUSDT", ReportOptions::default()).await?;
+    /// println!("{}", report.markdown_content);
+    ///
+    /// // Custom report with specific sections
+    /// let options = ReportOptions {
+    ///     include_sections: Some(vec![
+    ///         "price_overview".to_string(),
+    ///         "liquidity_analysis".to_string()
+    ///     ]),
+    ///     volume_window_hours: Some(48),
+    ///     orderbook_levels: Some(50),
+    /// };
+    /// let custom_report = generator.generate_report("ETHUSDT", options).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn generate_report(
         &self,
         symbol: &str,
@@ -160,7 +228,28 @@ impl ReportGenerator {
         Ok(report)
     }
 
-    /// Clear cached report for symbol
+    /// Invalidates all cached reports for a symbol across all option combinations.
+    ///
+    /// This method clears all cached report entries for the specified symbol,
+    /// regardless of the options used when generating them. This is useful when
+    /// you need to force regeneration of reports due to:
+    /// - Significant market events
+    /// - Data quality issues
+    /// - Manual cache invalidation requests
+    ///
+    /// # Arguments
+    /// * `symbol` - The trading pair symbol to invalidate (e.g., "BTCUSDT")
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use binance_provider::report::ReportGenerator;
+    /// # fn example(generator: &ReportGenerator) {
+    /// // Invalidate all cached BTCUSDT reports
+    /// generator.invalidate_cache("BTCUSDT");
+    ///
+    /// // Next call to generate_report will fetch fresh data
+    /// # }
+    /// ```
     pub fn invalidate_cache(&self, symbol: &str) {
         self.cache.invalidate(symbol);
     }

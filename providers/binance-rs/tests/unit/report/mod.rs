@@ -6,7 +6,7 @@
 // - cache: Report caching logic
 // - validation: ReportOptions validation
 
+pub mod cache_tests;
 pub mod formatter_tests;
 pub mod sections_tests;
-pub mod cache_tests;
 pub mod validation_tests;
