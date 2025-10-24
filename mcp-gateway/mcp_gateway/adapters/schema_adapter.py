@@ -27,8 +27,7 @@ class SchemaAdapter:
 
                 # NEW: Trading normalizers (Feature 013 - FR-001 to FR-007)
                 "order": self._normalize_binance_order,
-                "account": self._normalize_binance_account,
-                "trade": self._normalize_binance_trade,
+                # Phase 7: account and trade normalizers removed (system now read-only)
 
                 # NEW: Market info normalizers (Feature 013 - FR-014 to FR-016)
                 "exchange_info": self._normalize_binance_exchange_info,
