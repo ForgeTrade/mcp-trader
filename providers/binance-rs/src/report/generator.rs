@@ -49,15 +49,10 @@ impl ReportGenerator {
         if let Some(cached_report) = self.cache.get(&cache_key) {
             let cache_retrieval_time = start_time.elapsed().as_millis() as i32;
 
-            // T043: Add footer to cached report
-            let footer = sections::build_report_footer(cache_retrieval_time, true);
-            let mut markdown_with_footer = cached_report.markdown_content.clone();
-            markdown_with_footer.push_str(&footer);
-
-            // Return cached report with preserved metadata
-            // Update only generation_time_ms to reflect cache retrieval time
+            // P1 fix: Don't append footer to cached report - it already has one from initial generation
+            // Cached reports are stored WITH footer, so returning as-is avoids duplication
             return Ok(MarketReport {
-                markdown_content: markdown_with_footer,
+                markdown_content: cached_report.markdown_content,
                 symbol: cached_report.symbol,
                 generated_at: cached_report.generated_at,
                 data_age_ms: cached_report.data_age_ms, // Preserved from original
