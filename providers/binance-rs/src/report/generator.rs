@@ -47,18 +47,10 @@ impl ReportGenerator {
 
         // Check cache (P1 fix: preserve metadata)
         if let Some(cached_report) = self.cache.get(&cache_key) {
-            let cache_retrieval_time = start_time.elapsed().as_millis() as i32;
-
-            // P1 fix: Don't append footer to cached report - it already has one from initial generation
-            // Cached reports are stored WITH footer, so returning as-is avoids duplication
-            return Ok(MarketReport {
-                markdown_content: cached_report.markdown_content,
-                symbol: cached_report.symbol,
-                generated_at: cached_report.generated_at,
-                data_age_ms: cached_report.data_age_ms, // Preserved from original
-                failed_sections: cached_report.failed_sections, // Preserved from original
-                generation_time_ms: cache_retrieval_time as u64, // Cache retrieval time
-            });
+            // P1 fix: Return cached report with ALL original metadata preserved
+            // This ensures generation_time_ms matches the footer inside markdown_content
+            // and allows consumers to reason about actual generation cost vs. cache hits
+            return Ok(cached_report);
         }
 
         // Fetch all data sources in parallel
