@@ -176,13 +176,16 @@ impl OrderBookManager {
                     warn!(
                         symbol = %symbol_upper,
                         age_ms,
-                        "Cached data is stale, fetching fresh snapshot"
+                        "Cached data is stale, performing resync"
                     );
+                    // IMPROVEMENT: Use resync instead of reinitialize to avoid WebSocket duplication
+                    drop(states);
+                    return self.resync_order_book(&symbol_upper).await;
                 }
             }
         }
 
-        // Need to initialize or refresh
+        // Need to initialize (new symbol only)
         let mut states = self.states.write().await;
 
         // Check symbol limit (only for new symbols)
@@ -190,7 +193,7 @@ impl OrderBookManager {
             return Err(ManagerError::SymbolLimitReached);
         }
 
-        // Initialize or refresh order book
+        // Initialize order book (for new symbols only)
         self.initialize_order_book(&mut states, &symbol_upper)
             .await?;
 
@@ -232,11 +235,13 @@ impl OrderBookManager {
 
         // Spawn task to process WebSocket updates
         let states_clone = Arc::clone(&self.states);
+        let binance_client_clone = Arc::clone(&self.binance_client);
+        let rate_limiter_clone = Arc::clone(&self.rate_limiter);
         let symbol_owned = symbol.to_string();
         tokio::spawn(async move {
             while let Some(update) = update_receiver.recv().await {
                 if let Err(e) =
-                    Self::process_depth_update(&states_clone, &symbol_owned, update).await
+                    Self::process_depth_update(&states_clone, &binance_client_clone, &rate_limiter_clone, &symbol_owned, update).await
                 {
                     error!(
                         symbol = %symbol_owned,
@@ -343,12 +348,16 @@ impl OrderBookManager {
     /// - If u <= lastUpdateId: ignore (stale event)
     /// - If U > lastUpdateId + 1: gap detected, skip update to prevent corruption
     /// - If U <= lastUpdateId + 1 <= u: normal case, apply update
+    ///
+    /// IMPROVEMENT: Now triggers proactive background resync when needs_resync is set
     async fn process_depth_update(
-        states: &Arc<RwLock<HashMap<String, OrderBookState>>>,
+        states_arc: &Arc<RwLock<HashMap<String, OrderBookState>>>,
+        binance_client: &Arc<BinanceClient>,
+        rate_limiter: &Arc<RateLimiter>,
         symbol: &str,
         update: DepthUpdateEvent,
     ) -> Result<(), ManagerError> {
-        let mut states = states.write().await;
+        let mut states = states_arc.write().await;
         let state = states
             .get_mut(symbol)
             .ok_or_else(|| ManagerError::SymbolNotFound(symbol.to_string()))?;
@@ -379,6 +388,20 @@ impl OrderBookManager {
             );
             // Mark as needing resync
             state.needs_resync = true;
+
+            // IMPROVEMENT: Proactive background resync with 2s delay
+            let states_clone = Arc::clone(states_arc);
+            let binance_clone = Arc::clone(binance_client);
+            let rate_limiter_clone = Arc::clone(rate_limiter);
+            let symbol_owned = symbol.to_string();
+            tokio::spawn(async move {
+                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                info!(symbol = %symbol_owned, "Starting background resync due to gap");
+                if let Err(e) = Self::background_resync(&states_clone, &binance_clone, &rate_limiter_clone, &symbol_owned).await {
+                    error!(symbol = %symbol_owned, error = %e, "Background resync failed");
+                }
+            });
+
             return Err(ManagerError::WebSocketError(
                 format!("Gap detected: expected U={}, got U={}", last_id + 1, update.first_update_id)
             ));
@@ -443,10 +466,75 @@ impl OrderBookManager {
                     "CRITICAL: Crossed orderbook detected after update! best_ask <= best_bid. Marking for resync."
                 );
                 state.needs_resync = true;
+
+                // IMPROVEMENT: Proactive background resync with 2s delay
+                let states_clone = Arc::clone(states_arc);
+                let binance_clone = Arc::clone(binance_client);
+                let rate_limiter_clone = Arc::clone(rate_limiter);
+                let symbol_owned = symbol.to_string();
+                tokio::spawn(async move {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                    info!(symbol = %symbol_owned, "Starting background resync due to crossed orderbook");
+                    if let Err(e) = Self::background_resync(&states_clone, &binance_clone, &rate_limiter_clone, &symbol_owned).await {
+                        error!(symbol = %symbol_owned, error = %e, "Background resync failed");
+                    }
+                });
+
                 return Err(ManagerError::WebSocketError(
                     format!("Crossed orderbook: bid={} >= ask={}", best_bid, best_ask)
                 ));
             }
+        }
+
+        Ok(())
+    }
+
+    /// Background resync helper (static method for spawned tasks)
+    async fn background_resync(
+        states: &Arc<RwLock<HashMap<String, OrderBookState>>>,
+        binance_client: &Arc<BinanceClient>,
+        rate_limiter: &Arc<RateLimiter>,
+        symbol: &str,
+    ) -> Result<(), ManagerError> {
+        // Wait for rate limit permission
+        rate_limiter.wait().await?;
+
+        // Fetch fresh snapshot
+        let snapshot = binance_client
+            .get_order_book(symbol, Some(100))
+            .await
+            .map_err(|e| ManagerError::RestApiError(e.to_string()))?;
+
+        // Convert response to OrderBook
+        let mut order_book = OrderBook::new(symbol.to_string());
+        order_book.last_update_id = snapshot.last_update_id;
+        order_book.timestamp = chrono::Utc::now().timestamp_millis();
+
+        // Parse bids
+        for (price_str, qty_str) in &snapshot.bids {
+            let price = Decimal::from_str(price_str)
+                .map_err(|e| ManagerError::RestApiError(format!("Invalid bid price: {}", e)))?;
+            let qty = Decimal::from_str(qty_str)
+                .map_err(|e| ManagerError::RestApiError(format!("Invalid bid qty: {}", e)))?;
+            order_book.bids.insert(price, qty);
+        }
+
+        // Parse asks
+        for (price_str, qty_str) in &snapshot.asks {
+            let price = Decimal::from_str(price_str)
+                .map_err(|e| ManagerError::RestApiError(format!("Invalid ask price: {}", e)))?;
+            let qty = Decimal::from_str(qty_str)
+                .map_err(|e| ManagerError::RestApiError(format!("Invalid ask qty: {}", e)))?;
+            order_book.asks.insert(price, qty);
+        }
+
+        // Update state
+        let mut states = states.write().await;
+        if let Some(state) = states.get_mut(symbol) {
+            state.order_book = order_book;
+            state.last_update_time = chrono::Utc::now().timestamp_millis();
+            state.needs_resync = false;
+            info!(symbol = %symbol, "Background resync completed successfully");
         }
 
         Ok(())
