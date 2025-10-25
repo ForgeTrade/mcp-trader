@@ -61,6 +61,9 @@ struct OrderBookState {
 
     /// Whether WebSocket is currently connected
     websocket_connected: bool,
+
+    /// CROSSED FIX: Flag indicating orderbook needs re-sync due to gap
+    needs_resync: bool,
 }
 
 /// Manager for multiple order book subscriptions
@@ -146,6 +149,18 @@ impl OrderBookManager {
         {
             let states = self.states.read().await;
             if let Some(state) = states.get(&symbol_upper) {
+                // AUTO-RESYNC FIX: Check if resync is needed due to gap detection
+                if state.needs_resync {
+                    warn!(
+                        symbol = %symbol_upper,
+                        "Gap detected in WebSocket updates, forcing resync"
+                    );
+                    // Drop read lock before acquiring write lock
+                    drop(states);
+                    // Perform resync with write lock
+                    return self.resync_order_book(&symbol_upper).await;
+                }
+
                 // Check staleness
                 let now = chrono::Utc::now().timestamp_millis();
                 let age_ms = now - state.last_update_time;
@@ -210,6 +225,7 @@ impl OrderBookManager {
             websocket_handle: Some(websocket_handle),
             last_update_time: chrono::Utc::now().timestamp_millis(),
             websocket_connected: true,
+            needs_resync: false, // CROSSED FIX: Initialize resync flag
         };
 
         states.insert(symbol.to_string(), state);
@@ -240,6 +256,41 @@ impl OrderBookManager {
 
         info!(symbol = %symbol, "Order book initialized successfully");
         Ok(())
+    }
+
+    /// Resync order book from REST API without killing WebSocket
+    ///
+    /// AUTO-RESYNC FIX: This method refreshes the orderbook snapshot while keeping
+    /// the WebSocket connection alive. Used when gaps are detected or crossed orderbook appears.
+    async fn resync_order_book(&self, symbol: &str) -> Result<OrderBook, ManagerError> {
+        info!(symbol = %symbol, "Resyncing order book due to gap or anomaly");
+
+        // Acquire write lock
+        let mut states = self.states.write().await;
+
+        // Verify symbol exists
+        let state = states
+            .get_mut(symbol)
+            .ok_or_else(|| ManagerError::SymbolNotFound(symbol.to_string()))?;
+
+        // Wait for rate limit permission
+        self.rate_limiter.wait().await?;
+
+        // Fetch fresh snapshot
+        let fresh_snapshot = self.fetch_snapshot(symbol).await?;
+
+        // Update orderbook in-place (WebSocket handle remains untouched)
+        state.order_book = fresh_snapshot.clone();
+        state.last_update_time = chrono::Utc::now().timestamp_millis();
+        state.needs_resync = false; // Clear resync flag
+
+        info!(
+            symbol = %symbol,
+            update_id = fresh_snapshot.last_update_id,
+            "Order book resynced successfully"
+        );
+
+        Ok(fresh_snapshot)
     }
 
     /// Fetch order book snapshot from REST API
@@ -287,6 +338,11 @@ impl OrderBookManager {
     }
 
     /// Process a depth update from WebSocket
+    ///
+    /// CROSSED FIX: Properly handle update sequence according to Binance specification:
+    /// - If u <= lastUpdateId: ignore (stale event)
+    /// - If U > lastUpdateId + 1: gap detected, skip update to prevent corruption
+    /// - If U <= lastUpdateId + 1 <= u: normal case, apply update
     async fn process_depth_update(
         states: &Arc<RwLock<HashMap<String, OrderBookState>>>,
         symbol: &str,
@@ -297,33 +353,69 @@ impl OrderBookManager {
             .get_mut(symbol)
             .ok_or_else(|| ManagerError::SymbolNotFound(symbol.to_string()))?;
 
-        // Verify update sequence (must be contiguous)
-        if update.first_update_id != state.order_book.last_update_id + 1 {
-            warn!(
+        // CROSSED FIX: Proper sequence validation per Binance spec
+        let last_id = state.order_book.last_update_id;
+
+        // Case 1: Stale event (u <= lastUpdateId) - ignore
+        if update.final_update_id <= last_id {
+            debug!(
                 symbol = %symbol,
-                expected = state.order_book.last_update_id + 1,
-                received = update.first_update_id,
-                "Update ID mismatch, may need to re-sync"
+                update_u = update.final_update_id,
+                last_id = last_id,
+                "Ignoring stale depth update"
             );
+            return Ok(());
         }
 
-        // Apply bid updates
+        // Case 2: Gap detected (U > lastUpdateId + 1) - skip to prevent corruption
+        if update.first_update_id > last_id + 1 {
+            error!(
+                symbol = %symbol,
+                gap = update.first_update_id - last_id - 1,
+                expected_U = last_id + 1,
+                received_U = update.first_update_id,
+                received_u = update.final_update_id,
+                "Gap in depth updates detected! Skipping update to prevent orderbook corruption. Re-sync needed."
+            );
+            // Mark as needing resync
+            state.needs_resync = true;
+            return Err(ManagerError::WebSocketError(
+                format!("Gap detected: expected U={}, got U={}", last_id + 1, update.first_update_id)
+            ));
+        }
+
+        // Case 3: Normal or overlapping case (U <= lastUpdateId + 1 <= u) - apply
+        debug!(
+            symbol = %symbol,
+            U = update.first_update_id,
+            u = update.final_update_id,
+            last_id = last_id,
+            "Applying depth update"
+        );
+
+        // Apply bid updates (log deletions)
         for [price_str, qty_str] in &update.bids {
             let price = Decimal::from_str(price_str)
                 .map_err(|e| ManagerError::WebSocketError(format!("Invalid bid price: {}", e)))?;
             let qty = Decimal::from_str(qty_str)
                 .map_err(|e| ManagerError::WebSocketError(format!("Invalid bid qty: {}", e)))?;
 
+            if qty.is_zero() {
+                debug!(symbol = %symbol, price = %price, "Removing bid level");
+            }
             state.order_book.update_bid(price, qty);
         }
 
-        // Apply ask updates
+        // Apply ask updates (log deletions)
         for [price_str, qty_str] in &update.asks {
             let price = Decimal::from_str(price_str)
                 .map_err(|e| ManagerError::WebSocketError(format!("Invalid ask price: {}", e)))?;
             let qty = Decimal::from_str(qty_str)
                 .map_err(|e| ManagerError::WebSocketError(format!("Invalid ask qty: {}", e)))?;
 
+            if qty.is_zero() {
+                debug!(symbol = %symbol, price = %price, "Removing ask level");
+            }
             state.order_book.update_ask(price, qty);
         }
 
@@ -337,8 +429,25 @@ impl OrderBookManager {
             update_id = update.final_update_id,
             bid_updates = update.bids.len(),
             ask_updates = update.asks.len(),
-            "Processed depth update"
+            "Processed depth update successfully"
         );
+
+        // AUTO-RESYNC FIX: Detect crossed orderbook (safety check)
+        // If best_ask <= best_bid after applying updates, orderbook is corrupted
+        if let (Some(best_bid), Some(best_ask)) = (state.order_book.best_bid(), state.order_book.best_ask()) {
+            if best_ask <= best_bid {
+                error!(
+                    symbol = %symbol,
+                    best_bid = %best_bid,
+                    best_ask = %best_ask,
+                    "CRITICAL: Crossed orderbook detected after update! best_ask <= best_bid. Marking for resync."
+                );
+                state.needs_resync = true;
+                return Err(ManagerError::WebSocketError(
+                    format!("Crossed orderbook: bid={} >= ask={}", best_bid, best_ask)
+                ));
+            }
+        }
 
         Ok(())
     }
