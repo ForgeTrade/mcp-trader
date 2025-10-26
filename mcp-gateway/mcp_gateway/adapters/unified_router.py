@@ -48,7 +48,7 @@ class UnifiedToolRouter:
         unified_tool_name: str,
         arguments: Dict[str, Any],
         correlation_id: str,
-        timeout: float = 5.0
+        timeout: float = 15.0
     ) -> Dict[str, Any]:
         """
         Route a unified tool call to the appropriate provider.

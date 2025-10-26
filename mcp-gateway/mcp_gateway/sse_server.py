@@ -3,6 +3,7 @@ SSE (Server-Sent Events) server for ChatGPT MCP integration.
 Exposes search and fetch tools over SSE transport.
 """
 import asyncio
+import os
 import json
 import logging
 from pathlib import Path
@@ -127,8 +128,12 @@ class ChatGPTMCPServer:
                                 "properties": {
                                     "include_sections": {
                                         "type": "array",
-                                        "description": "Section names to include (omit for all sections)",
-                                        "items": {"type": "string"}
+                                        "description": "Section names to include (omit for all sections). Valid values: price_overview, orderbook_metrics, liquidity_analysis, market_microstructure, market_anomalies, microstructure_health, data_health",
+                                        "items": {
+                                            "type": "string",
+                                            "enum": ["price_overview", "orderbook_metrics", "liquidity_analysis", "market_microstructure", "market_anomalies", "microstructure_health", "data_health"]
+                                        },
+                                        "examples": [["price_overview", "orderbook_metrics", "liquidity_analysis"]]
                                     },
                                     "volume_window_hours": {
                                         "type": "integer",
@@ -183,11 +188,12 @@ class ChatGPTMCPServer:
                     logger.info(f"Routing market.generate_report through UnifiedToolRouter")
 
                     try:
+                        # Use 15s timeout for analytics-heavy market reports (ChatGPT integration)
                         result = await self.unified_router.route_tool_call(
                             unified_tool_name=name,
                             arguments=arguments,
                             correlation_id=correlation_id,
-                            timeout=5.0
+                            timeout=15.0
                         )
 
                         # Feature 018: Report is returned as markdown text
@@ -307,8 +313,12 @@ async def main():
     """Main entry point for SSE server."""
     import uvicorn
 
-    # Resolve config path
-    config_path = Path(__file__).parent.parent / "providers.yaml"
+    # Resolve config path (allow override via env for testing)
+    config_env = os.getenv("MCP_PROVIDERS")
+    if config_env:
+        config_path = Path(config_env)
+    else:
+        config_path = Path(__file__).parent.parent / "providers.yaml"
 
     # Create and initialize server
     server = ChatGPTMCPServer(str(config_path))
@@ -318,17 +328,18 @@ async def main():
     app = server.get_sse_app()
 
     # Run with uvicorn
+    port = int(os.getenv("MCP_SSE_PORT", "3001"))
     config = uvicorn.Config(
         app,
         host="0.0.0.0",
-        port=3001,
+        port=port,
         log_level="info",
         access_log=True,
     )
     uvicorn_server = uvicorn.Server(config)
 
     try:
-        logger.info("Starting SSE server on http://0.0.0.0:3001")
+        logger.info(f"Starting SSE server on http://0.0.0.0:{port}")
         await uvicorn_server.serve()
     finally:
         await server.shutdown()

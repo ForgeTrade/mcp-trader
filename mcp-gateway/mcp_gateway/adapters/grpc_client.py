@@ -115,7 +115,7 @@ class ProviderGRPCClient:
             logger.error(f"Failed to list capabilities from {self.provider_name}: {e.code()} - {e.details()}")
             raise
 
-    async def invoke(self, tool_name: str, payload: Dict[str, Any], correlation_id: str, timeout: float = 2.5) -> Dict[str, Any]:
+    async def invoke(self, tool_name: str, payload: Dict[str, Any], correlation_id: str, timeout: float = 15.0) -> Dict[str, Any]:
         """
         Invoke a tool on the provider.
 
@@ -123,7 +123,7 @@ class ProviderGRPCClient:
             tool_name: Name of the tool to invoke
             payload: Tool arguments
             correlation_id: Correlation ID for tracing
-            timeout: Request timeout in seconds (default: 2.5s)
+            timeout: Request timeout in seconds (default: 15.0s for analytics-heavy operations)
 
         Returns:
             Tool result dictionary with 'result' or 'error' key
