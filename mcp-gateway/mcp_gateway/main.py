@@ -122,7 +122,12 @@ class MCPGateway:
                                 "properties": {
                                     "include_sections": {
                                         "type": "array",
-                                        "items": {"type": "string"}
+                                        "description": "Section names to include (omit for all sections). Valid values: price_overview, orderbook_metrics, liquidity_analysis, market_microstructure, market_anomalies, microstructure_health, data_health",
+                                        "items": {
+                                            "type": "string",
+                                            "enum": ["price_overview", "orderbook_metrics", "liquidity_analysis", "market_microstructure", "market_anomalies", "microstructure_health", "data_health"]
+                                        },
+                                        "examples": [["price_overview", "orderbook_metrics", "liquidity_analysis"]]
                                     },
                                     "volume_window_hours": {
                                         "type": "integer",
@@ -217,8 +222,8 @@ class MCPGateway:
         # Invoke the tool on the provider
         client = self.clients[provider_name]
         try:
-            # Use 5s timeout for market reports (generation takes ~2-3s with analytics)
-            response = await client.invoke(provider_tool_name, provider_arguments, correlation_id, timeout=5.0)
+            # Use 15s timeout for market reports (generation with large analytics datasets can take 10-15s)
+            response = await client.invoke(provider_tool_name, provider_arguments, correlation_id, timeout=15.0)
 
             if "error" in response:
                 error_msg = f"Tool invocation failed: {response['error']}"
