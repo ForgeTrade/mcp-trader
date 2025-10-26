@@ -13,6 +13,10 @@ pub struct ReportGenerator {
     binance_client: Arc<BinanceClient>,
     orderbook_manager: Arc<OrderBookManager>,
     cache: Arc<ReportCache>,
+    #[cfg(feature = "orderbook_analytics")]
+    analytics_storage: Option<Arc<crate::orderbook::analytics::SnapshotStorage>>,
+    #[cfg(feature = "orderbook_analytics")]
+    trade_storage: Option<Arc<crate::orderbook::analytics::TradeStorage>>,
 }
 
 impl ReportGenerator {
@@ -43,6 +47,35 @@ impl ReportGenerator {
             binance_client,
             orderbook_manager,
             cache: Arc::new(ReportCache::new(cache_ttl_secs)),
+            #[cfg(feature = "orderbook_analytics")]
+            analytics_storage: None,
+            #[cfg(feature = "orderbook_analytics")]
+            trade_storage: None,
+        }
+    }
+
+    /// Creates a new report generator with analytics storage (Feature 019)
+    ///
+    /// # Arguments
+    /// * `binance_client` - Shared Binance API client for market data fetching
+    /// * `orderbook_manager` - Shared order book manager for WebSocket-powered data
+    /// * `cache_ttl_secs` - Cache time-to-live in seconds (typically 60s)
+    /// * `analytics_storage` - Optional snapshot storage for advanced analytics
+    /// * `trade_storage` - Optional trade storage for volume profile and flow analysis
+    #[cfg(feature = "orderbook_analytics")]
+    pub fn new_with_analytics(
+        binance_client: Arc<BinanceClient>,
+        orderbook_manager: Arc<OrderBookManager>,
+        cache_ttl_secs: u64,
+        analytics_storage: Arc<crate::orderbook::analytics::SnapshotStorage>,
+        trade_storage: Arc<crate::orderbook::analytics::TradeStorage>,
+    ) -> Self {
+        Self {
+            binance_client,
+            orderbook_manager,
+            cache: Arc::new(ReportCache::new(cache_ttl_secs)),
+            analytics_storage: Some(analytics_storage),
+            trade_storage: Some(trade_storage),
         }
     }
 
@@ -149,10 +182,65 @@ impl ReportGenerator {
         let price = sections::build_price_overview_section(ticker_data.as_ref());
         let orderbook = sections::build_orderbook_metrics_section(orderbook_metrics.as_ref());
         let volume_hours = options.volume_window_hours.unwrap_or(24);
-        let liquidity =
-            sections::build_liquidity_analysis_section(orderbook_metrics.as_ref(), volume_hours); // T033-T037: Pass volume window
+
+        // Feature 019 T052: Use async liquidity section when analytics storage available
+        // CROSSED FIX: Pass live orderbook_metrics to avoid historical snapshot mismatches
+        #[cfg(feature = "orderbook_analytics")]
+        let liquidity = if let (Some(storage), Some(trades)) = (&self.analytics_storage, &self.trade_storage) {
+            sections::build_liquidity_analysis_section_async(
+                storage,
+                trades,
+                &symbol_upper,
+                volume_hours,
+                chrono::Utc::now(),
+                orderbook_metrics.as_ref(), // CROSSED FIX: Use live metrics for walls
+            )
+            .await
+        } else {
+            sections::build_liquidity_analysis_section(orderbook_metrics.as_ref(), volume_hours)
+        };
+
+        #[cfg(not(feature = "orderbook_analytics"))]
+        let liquidity = sections::build_liquidity_analysis_section(orderbook_metrics.as_ref(), volume_hours);
+
+        // Feature 019 T052: Use async order flow section when analytics storage available
+        #[cfg(feature = "orderbook_analytics")]
+        let microstructure = if let Some(storage) = &self.analytics_storage {
+            sections::build_microstructure_section_async(storage, &symbol_upper, chrono::Utc::now())
+                .await
+        } else {
+            sections::build_microstructure_section()
+        };
+
+        #[cfg(not(feature = "orderbook_analytics"))]
         let microstructure = sections::build_microstructure_section();
-        let anomalies = sections::build_anomalies_section(Some(now_ms)); // T028-T032: Pass timestamp for enhanced display
+
+        // Feature 019 T052: Use async anomaly detection when analytics storage available
+        #[cfg(feature = "orderbook_analytics")]
+        let anomalies = if let Some(storage) = &self.analytics_storage {
+            sections::build_anomalies_section_async(
+                storage,
+                &symbol_upper,
+                chrono::Utc::now(),
+            )
+            .await
+        } else {
+            sections::build_anomalies_section(Some(now_ms))
+        };
+
+        #[cfg(not(feature = "orderbook_analytics"))]
+        let anomalies = sections::build_anomalies_section(Some(now_ms));
+
+        // Feature 019 T052: Use async health section when analytics storage available
+        #[cfg(feature = "orderbook_analytics")]
+        let health = if let Some(storage) = &self.analytics_storage {
+            sections::build_health_section_async(storage, &symbol_upper, chrono::Utc::now())
+                .await
+        } else {
+            sections::build_health_section()
+        };
+
+        #[cfg(not(feature = "orderbook_analytics"))]
         let health = sections::build_health_section();
         let data_health = sections::build_data_health_section(data_age_ms);
 

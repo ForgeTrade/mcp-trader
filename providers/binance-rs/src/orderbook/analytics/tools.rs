@@ -464,6 +464,66 @@ pub async fn get_microstructure_health(
 /// # Usage
 /// For long positions: Place stops below vacuum zones
 /// For short positions: Place stops above vacuum zones
+///
+/// Helper function to merge adjacent liquidity vacuums into consolidated ranges
+///
+/// Merges vacuums if their price ranges are within 0.1% of each other (considered "adjacent").
+/// This improves report readability by showing wider vacuum zones instead of many small gaps.
+fn merge_adjacent_vacuums(mut vacuums: Vec<LiquidityVacuum>) -> Vec<LiquidityVacuum> {
+    if vacuums.len() <= 1 {
+        return vacuums;
+    }
+
+    // Sort by price_range_low ascending
+    vacuums.sort_by(|a, b| {
+        a.price_range_low
+            .partial_cmp(&b.price_range_low)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let mut merged: Vec<LiquidityVacuum> = Vec::new();
+    let mut current = vacuums[0].clone();
+
+    for next in vacuums.into_iter().skip(1) {
+        // Calculate gap between current.high and next.low
+        let gap = next.price_range_low - current.price_range_high;
+        let mid_price = (current.price_range_high + next.price_range_low) / rust_decimal::Decimal::from(2);
+        let gap_pct = if !mid_price.is_zero() {
+            (gap / mid_price).abs() * rust_decimal::Decimal::from(100)
+        } else {
+            rust_decimal::Decimal::from(100)
+        };
+
+        // Merge if gap is < 0.1% (adjacent)
+        use rust_decimal::prelude::ToPrimitive;
+        if gap_pct.to_f64().unwrap_or(100.0) < 0.1 {
+            // Extend current vacuum to include next
+            current.price_range_high = next.price_range_high;
+            // Average the deficit percentages weighted by range size
+            let current_range = current.price_range_high - current.price_range_low;
+            let next_range = next.price_range_high - next.price_range_low;
+            let total_range = current_range + next_range;
+            if !total_range.is_zero() {
+                let current_weight = (current_range / total_range).to_f64().unwrap_or(0.5);
+                let next_weight = (next_range / total_range).to_f64().unwrap_or(0.5);
+                current.volume_deficit_pct =
+                    current.volume_deficit_pct * current_weight + next.volume_deficit_pct * next_weight;
+            }
+            // Sum actual volumes
+            current.actual_volume += next.actual_volume;
+        } else {
+            // Gap too large, push current and start new range
+            merged.push(current);
+            current = next;
+        }
+    }
+
+    // Push the last vacuum
+    merged.push(current);
+
+    merged
+}
+
 pub async fn get_liquidity_vacuums(
     storage: Arc<SnapshotStorage>,
     params: GetLiquidityVacuumsParams,
@@ -515,7 +575,16 @@ pub async fn get_liquidity_vacuums(
         "Liquidity vacuums identified"
     );
 
-    Ok(vacuums)
+    // Merge adjacent vacuums into ranges for better readability
+    let merged_vacuums = merge_adjacent_vacuums(vacuums);
+
+    debug!(
+        symbol = %symbol_upper,
+        merged_count = merged_vacuums.len(),
+        "Adjacent vacuums merged into ranges"
+    );
+
+    Ok(merged_vacuums)
 }
 
 #[cfg(test)]

@@ -36,6 +36,14 @@ pub fn calculate_metrics(order_book: &OrderBook) -> Option<OrderBookMetrics> {
     let best_bid = order_book.best_bid()?;
     let best_ask = order_book.best_ask()?;
 
+    // Get sizes at best bid/ask levels
+    let best_bid_size = order_book.bids.get(best_bid)
+        .map(|qty| qty.to_f64().unwrap_or(0.0))
+        .unwrap_or(0.0);
+    let best_ask_size = order_book.asks.get(best_ask)
+        .map(|qty| qty.to_f64().unwrap_or(0.0))
+        .unwrap_or(0.0);
+
     // Calculate spread in basis points: ((ask - bid) / bid) * 10000
     let spread_bps = calculate_spread_bps(*best_bid, *best_ask)?;
 
@@ -63,6 +71,9 @@ pub fn calculate_metrics(order_book: &OrderBook) -> Option<OrderBookMetrics> {
     // Calculate microprice
     let microprice = calculate_microprice(*best_bid, *best_ask, bid_volume, ask_volume)?;
 
+    // Calculate mid price (simple average of best bid and ask)
+    let mid_price = (best_bid.to_f64()? + best_ask.to_f64()?) / 2.0;
+
     // Calculate imbalance ratio
     let imbalance_ratio = if ask_volume > 0.0 {
         bid_volume / ask_volume
@@ -80,15 +91,18 @@ pub fn calculate_metrics(order_book: &OrderBook) -> Option<OrderBookMetrics> {
     Some(OrderBookMetrics {
         symbol: order_book.symbol.clone(),
         timestamp: order_book.timestamp,
+        last_update_id: order_book.last_update_id,
         spread_bps,
         microprice,
+        mid_price,
         bid_volume,
         ask_volume,
         imbalance_ratio,
-        // Bug fix (Feature 017): Swap assignments - the local variables best_bid/best_ask
-        // contain the correct values, but we need to swap them when assigning to struct fields
-        best_bid: best_ask.to_string(), // Assign lowest price to best_bid field
-        best_ask: best_bid.to_string(), // Assign highest price to best_ask field
+        // OrderBook data is correct - no swap needed
+        best_bid: best_bid.to_string(),
+        best_ask: best_ask.to_string(),
+        best_bid_size,
+        best_ask_size,
         walls,
         slippage_estimates,
     })

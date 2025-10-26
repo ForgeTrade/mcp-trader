@@ -28,9 +28,12 @@ impl OrderBookSnapshot {
         let timestamp = Utc::now().timestamp();
 
         // Convert top 20 levels to string tuples for MessagePack
+        // Bug #2 Fix: Bids are sorted ascending in BTreeMap, but we need HIGHEST bids
+        // So use .rev() to get top 20 highest bid prices (closest to current price)
         let bids: Vec<(String, String)> = orderbook
             .bids
             .iter()
+            .rev()  // ← Fix: reverse to get highest bids first
             .take(20)
             .map(|(price, qty)| (price.to_string(), qty.to_string()))
             .collect();

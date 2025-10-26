@@ -82,11 +82,17 @@ pub struct OrderBookMetrics {
     /// Metrics calculation time (milliseconds since Unix epoch)
     pub timestamp: i64,
 
+    /// Last update ID from Binance (for snapshot consistency verification)
+    pub last_update_id: i64,
+
     /// Spread in basis points: ((best_ask - best_bid) / best_bid) * 10000
     pub spread_bps: f64,
 
     /// Volume-weighted fair price: (best_bid * ask_vol + best_ask * bid_vol) / (bid_vol + ask_vol)
     pub microprice: f64,
+
+    /// Mid price: (best_bid + best_ask) / 2 (basis for spread calculation)
+    pub mid_price: f64,
 
     /// Sum of top 20 bid level quantities (buy-side liquidity depth)
     pub bid_volume: f64,
@@ -102,6 +108,12 @@ pub struct OrderBookMetrics {
 
     /// Lowest ask price (string for decimal precision)
     pub best_ask: String,
+
+    /// Size at best bid level (quantity available at highest bid)
+    pub best_bid_size: f64,
+
+    /// Size at best ask level (quantity available at lowest ask)
+    pub best_ask_size: f64,
 
     /// Significant price levels (qty > 2x median of top 20 levels)
     pub walls: Walls,

@@ -73,14 +73,16 @@ impl BinanceProviderServer {
 
             tracing::info!("Trade persistence storage initialized (shared RocksDB)");
 
-            // Initialize ReportGenerator
-            let report_generator = Arc::new(ReportGenerator::new(
+            // Initialize ReportGenerator with analytics support
+            let report_generator = Arc::new(ReportGenerator::new_with_analytics(
                 Arc::new(binance_client.clone()),
                 orderbook_manager.clone(),
                 60, // 60 second cache TTL
+                analytics_storage.clone(),
+                trade_storage.clone(),
             ));
 
-            tracing::info!("Market data report generator initialized");
+            tracing::info!("Market data report generator initialized with analytics support");
 
             Ok(Self {
                 binance_client,

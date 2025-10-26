@@ -6,6 +6,7 @@
 pub mod formatter;
 pub mod generator;
 pub mod sections;
+pub mod util;
 
 // Re-export main types
 pub use generator::ReportGenerator;

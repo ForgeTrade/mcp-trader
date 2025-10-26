@@ -44,9 +44,18 @@ pub async fn calculate_order_flow(
     let start = end - Duration::seconds(window_duration_secs as i64);
 
     // Query snapshots from RocksDB (with 200ms timeout from FR-016)
+    let query_start = std::time::Instant::now();
     let snapshots = query_snapshots_in_window(storage, symbol, start.timestamp(), end.timestamp())
         .await
         .context("Failed to query snapshots from storage")?;
+    let query_elapsed = query_start.elapsed();
+
+    tracing::info!(
+        "Order flow snapshot query: duration={:?} count={} symbol={}",
+        query_elapsed,
+        snapshots.len(),
+        symbol
+    );
 
     anyhow::ensure!(
         snapshots.len() >= 2,
@@ -55,8 +64,18 @@ pub async fn calculate_order_flow(
         snapshots.len()
     );
 
-    // Aggregate bid/ask order counts
+    // Aggregate bid/ask order counts (PERF: optimized with HashMap)
+    let agg_start = std::time::Instant::now();
     let (bid_count, ask_count) = aggregate_bid_ask_counts(&snapshots)?;
+    let agg_elapsed = agg_start.elapsed();
+
+    tracing::info!(
+        "Order flow aggregation: duration={:?} bid_count={} ask_count={} symbol={}",
+        agg_elapsed,
+        bid_count,
+        ask_count,
+        symbol
+    );
 
     // Calculate flow rates (orders/sec)
     let (bid_flow_rate, ask_flow_rate) =
@@ -88,6 +107,10 @@ pub async fn calculate_order_flow(
 /// Counts order additions (not cancellations) by tracking depth changes
 /// between consecutive snapshots on each side of the book.
 ///
+/// # Performance
+/// Optimized with HashMap for O(n × m) complexity instead of O(n × m²).
+/// For 60 snapshots with 20 levels each: 1,200 ops instead of 24,000 ops.
+///
 /// # Returns
 /// (total_bid_additions, total_ask_additions)
 fn aggregate_bid_ask_counts(snapshots: &[OrderBookSnapshot]) -> Result<(u64, u64)> {
@@ -98,35 +121,36 @@ fn aggregate_bid_ask_counts(snapshots: &[OrderBookSnapshot]) -> Result<(u64, u64
         let prev = &window[0];
         let curr = &window[1];
 
-        // Count new orders on bid side (positive depth increases)
+        // Build HashMap from previous snapshot for O(1) lookups (PERF optimization)
+        let prev_bids: HashMap<&str, f64> = prev
+            .bids
+            .iter()
+            .filter_map(|(p, q)| q.parse::<f64>().ok().map(|qty| (p.as_str(), qty)))
+            .collect();
+
+        let prev_asks: HashMap<&str, f64> = prev
+            .asks
+            .iter()
+            .filter_map(|(p, q)| q.parse::<f64>().ok().map(|qty| (p.as_str(), qty)))
+            .collect();
+
+        // Count new orders on bid side (O(m) instead of O(m²))
         for (price_str, curr_qty_str) in &curr.bids {
-            let curr_qty: f64 = curr_qty_str.parse().unwrap_or(0.0);
-
-            let prev_qty: f64 = prev
-                .bids
-                .iter()
-                .find(|(p, _)| p == price_str)
-                .and_then(|(_, q)| q.parse().ok())
-                .unwrap_or(0.0);
-
-            if curr_qty > prev_qty {
-                bid_count += 1;
+            if let Ok(curr_qty) = curr_qty_str.parse::<f64>() {
+                let prev_qty = prev_bids.get(price_str.as_str()).copied().unwrap_or(0.0);
+                if curr_qty > prev_qty {
+                    bid_count += 1;
+                }
             }
         }
 
-        // Count new orders on ask side
+        // Count new orders on ask side (O(m) instead of O(m²))
         for (price_str, curr_qty_str) in &curr.asks {
-            let curr_qty: f64 = curr_qty_str.parse().unwrap_or(0.0);
-
-            let prev_qty: f64 = prev
-                .asks
-                .iter()
-                .find(|(p, _)| p == price_str)
-                .and_then(|(_, q)| q.parse().ok())
-                .unwrap_or(0.0);
-
-            if curr_qty > prev_qty {
-                ask_count += 1;
+            if let Ok(curr_qty) = curr_qty_str.parse::<f64>() {
+                let prev_qty = prev_asks.get(price_str.as_str()).copied().unwrap_or(0.0);
+                if curr_qty > prev_qty {
+                    ask_count += 1;
+                }
             }
         }
     }

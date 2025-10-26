@@ -50,11 +50,21 @@ pub fn calculate_microstructure_health(
         + (flow_balance_score * 0.25)
         + (update_rate_score * 0.15);
 
-    // Classify health level
-    let health_level = classify_health_level(overall_score);
+    // Find minimum component score to prevent "Excellent" with any poor component
+    let min_component_score = spread_stability_score
+        .min(liquidity_depth_score)
+        .min(flow_balance_score)
+        .min(update_rate_score);
 
-    // Generate recommendation
-    let recommended_action = generate_recommendation(overall_score, &health_level);
+    // Classify health level (requires all components >= 50 for "Excellent")
+    let health_level = classify_health_level(overall_score, min_component_score);
+
+    // Generate recommendation (considers liquidity depth for large orders)
+    let recommended_action = generate_recommendation(
+        overall_score,
+        &health_level,
+        liquidity_depth_score,
+    );
 
     Ok(MicrostructureHealth {
         symbol: symbol.to_string(),
@@ -201,10 +211,16 @@ fn calculate_update_rate_score(snapshots: &[OrderBookSnapshot]) -> f64 {
     }
 }
 
-/// Classify health level based on overall score
-fn classify_health_level(score: f64) -> String {
+/// Classify health level based on overall score and minimum component score
+///
+/// "Excellent" requires all components >= 50 to prevent misleading labels
+/// when one component (e.g., liquidity depth) is significantly weak
+fn classify_health_level(score: f64, min_component_score: f64) -> String {
     match score {
-        s if s >= 80.0 => "Excellent".to_string(),
+        // Excellent only if overall >= 80 AND all components >= 50
+        s if s >= 80.0 && min_component_score >= 50.0 => "Excellent".to_string(),
+        // Otherwise cap at "Good" if overall >= 80 but some component < 50
+        s if s >= 80.0 => "Good".to_string(),
         s if s >= 60.0 => "Good".to_string(),
         s if s >= 40.0 => "Fair".to_string(),
         s if s >= 20.0 => "Poor".to_string(),
@@ -212,17 +228,29 @@ fn classify_health_level(score: f64) -> String {
     }
 }
 
-/// Generate trading recommendation based on health score
-fn generate_recommendation(score: f64, level: &str) -> String {
-    match level {
+/// Generate trading recommendation based on health score and liquidity depth
+///
+/// Even with high overall score, poor liquidity depth requires caution for large orders
+fn generate_recommendation(score: f64, level: &str, liquidity_depth_score: f64) -> String {
+    // Check for poor liquidity depth (< 60) which requires special handling
+    let has_poor_liquidity = liquidity_depth_score < 60.0;
+
+    let base_recommendation = match level {
+        "Excellent" if has_poor_liquidity => {
+            "Market conditions good, but limited liquidity - split large orders (use TWAP/iceberg), monitor slippage to 10-25 bps"
+        }
         "Excellent" => "Market conditions optimal - safe to execute large orders",
+        "Good" if has_poor_liquidity => {
+            "Market conditions acceptable, but limited liquidity - use limit orders and split large positions"
+        }
         "Good" => "Market conditions healthy - normal trading recommended",
         "Fair" => "Market conditions acceptable - use limit orders and monitor closely",
         "Poor" => "Market conditions degraded - reduce position sizes and avoid market orders",
         "Critical" => "Market conditions unhealthy - avoid trading until conditions improve",
         _ => "Unknown health level",
-    }
-    .to_string()
+    };
+
+    base_recommendation.to_string()
 }
 
 #[cfg(test)]
@@ -231,11 +259,15 @@ mod tests {
 
     #[test]
     fn test_classify_health_level() {
-        assert_eq!(classify_health_level(95.0), "Excellent");
-        assert_eq!(classify_health_level(70.0), "Good");
-        assert_eq!(classify_health_level(50.0), "Fair");
-        assert_eq!(classify_health_level(30.0), "Poor");
-        assert_eq!(classify_health_level(10.0), "Critical");
+        // Excellent requires overall >= 80 AND all components >= 50
+        assert_eq!(classify_health_level(95.0, 60.0), "Excellent");
+        assert_eq!(classify_health_level(95.0, 50.0), "Excellent");
+        // Overall >= 80 but min component < 50 => Good
+        assert_eq!(classify_health_level(85.0, 45.0), "Good");
+        assert_eq!(classify_health_level(70.0, 60.0), "Good");
+        assert_eq!(classify_health_level(50.0, 40.0), "Fair");
+        assert_eq!(classify_health_level(30.0, 20.0), "Poor");
+        assert_eq!(classify_health_level(10.0, 5.0), "Critical");
     }
 
     #[test]

@@ -22,14 +22,21 @@ pub async fn query_snapshots_in_window(
 
     // Spawn blocking to avoid blocking async runtime
     tokio::task::spawn_blocking(move || {
+        let start_instant = std::time::Instant::now();
         let mut snapshots = Vec::new();
 
-        // Prefix scan: iterate all keys starting with "{symbol}:"
+        // PERF FIX: Start iteration at start_timestamp instead of beginning of symbol
+        // Key format: "{symbol}:{timestamp}" - start at exact timestamp
+        let start_key = format!("{}:{}", symbol_owned, start_timestamp_sec);
         let prefix = format!("{}:", symbol_owned);
-        let mode = IteratorMode::From(prefix.as_bytes(), rocksdb::Direction::Forward);
+        let mode = IteratorMode::From(start_key.as_bytes(), rocksdb::Direction::Forward);
+
+        let mut keys_scanned = 0;
+        let mut keys_matched = 0;
 
         for item in db.iterator(mode) {
             let (key, value) = item?;
+            keys_scanned += 1;
             let key_str = String::from_utf8_lossy(&key);
 
             // Check if key still matches symbol prefix
@@ -40,20 +47,32 @@ pub async fn query_snapshots_in_window(
             // Parse timestamp from key "{symbol}:{timestamp}"
             if let Some(timestamp_str) = key_str.split(':').nth(1) {
                 if let Ok(timestamp) = timestamp_str.parse::<i64>() {
+                    // PERF: Early exit if we've passed end timestamp
+                    if timestamp > end_timestamp_sec {
+                        break;
+                    }
+
                     // Filter by time range
                     if timestamp >= start_timestamp_sec && timestamp <= end_timestamp_sec {
                         let snapshot = OrderBookSnapshot::from_bytes(&value)
                             .context("Failed to deserialize snapshot")?;
                         snapshots.push(snapshot);
-                    }
-
-                    // Optimization: stop if we've passed end timestamp
-                    if timestamp > end_timestamp_sec {
-                        break;
+                        keys_matched += 1;
                     }
                 }
             }
         }
+
+        let elapsed = start_instant.elapsed();
+        tracing::info!(
+            "Snapshot query completed: symbol={} window={}s duration={:?} keys_scanned={} keys_matched={} snapshots={}",
+            symbol_owned,
+            end_timestamp_sec - start_timestamp_sec,
+            elapsed,
+            keys_scanned,
+            keys_matched,
+            snapshots.len()
+        );
 
         Ok(snapshots)
     })

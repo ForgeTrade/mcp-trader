@@ -75,7 +75,7 @@ where
     F: Future<Output = Result<T, E>>,
     E: std::fmt::Display,
 {
-    match timeout(Duration::from_secs(1), future).await {
+    match timeout(Duration::from_secs(3), future).await {
         Ok(Ok(result)) => {
             // FR-018: Log successful execution at debug level
             tracing::debug!(
