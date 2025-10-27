@@ -54,7 +54,7 @@ echo ""
 
 # Pull the specific rollback images
 echo "[2/4] Pulling rollback images from GHCR..."
-if docker-compose pull; then
+if docker compose pull; then
     echo "✓ Rollback images pulled successfully"
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Rollback images pulled (sha-$ROLLBACK_SHA)" >> "$LOG_FILE"
 else
@@ -72,7 +72,7 @@ echo ""
 
 # Restart services with rollback images
 echo "[3/4] Restarting services with rollback images..."
-if docker-compose up -d; then
+if docker compose up -d; then
     echo "✓ Services restarted with rollback images"
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Services restarted with rollback" >> "$LOG_FILE"
 else
@@ -89,17 +89,17 @@ echo "Waiting 15 seconds for containers to initialize..."
 sleep 15
 
 echo "Checking service status..."
-docker-compose ps
+docker compose ps
 
 echo ""
 
 # Verify health checks
-UNHEALTHY=$(docker-compose ps --filter "health=unhealthy" -q | wc -l)
-STARTING=$(docker-compose ps --filter "health=starting" -q | wc -l)
+UNHEALTHY=$(docker compose ps --filter "health=unhealthy" -q | wc -l)
+STARTING=$(docker compose ps --filter "health=starting" -q | wc -l)
 
 if [ "$UNHEALTHY" -gt 0 ]; then
     echo "⚠ WARNING: $UNHEALTHY container(s) are unhealthy after rollback"
-    echo "Run 'docker-compose logs' to investigate"
+    echo "Run 'docker compose logs' to investigate"
     echo "$(date '+%Y-%m-%d %H:%M:%S') - WARNING: Unhealthy containers after rollback" >> "$LOG_FILE"
 elif [ "$STARTING" -gt 0 ]; then
     echo "⚠ NOTE: $STARTING container(s) are still starting up"
@@ -118,8 +118,8 @@ echo "$(date '+%Y-%m-%d %H:%M:%S') - Rollback to sha-$ROLLBACK_SHA completed" >>
 echo ""
 echo "Services are now running image tags: sha-$ROLLBACK_SHA"
 echo ""
-echo "To view logs:     docker-compose logs -f"
-echo "To check status:  docker-compose ps"
+echo "To view logs:     docker compose logs -f"
+echo "To check status:  docker compose ps"
 echo "To view history:  cat deployment.log"
 echo ""
 echo "NOTE: To make this rollback persistent, update your .env file with:"

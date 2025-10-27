@@ -26,7 +26,7 @@ echo "$(date '+%Y-%m-%d %H:%M:%S') - Starting deployment" >> "$LOG_FILE"
 
 # T021: Pull latest images from GitHub Container Registry
 echo "[1/4] Pulling latest Docker images from GHCR..."
-if docker-compose pull; then
+if docker compose pull; then
     echo "✓ Images pulled successfully"
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Images pulled successfully" >> "$LOG_FILE"
 else
@@ -39,7 +39,7 @@ echo ""
 
 # T022: Restart services with new images
 echo "[2/4] Restarting services with new images..."
-if docker-compose up -d; then
+if docker compose up -d; then
     echo "✓ Services restarted successfully"
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Services restarted" >> "$LOG_FILE"
 else
@@ -57,18 +57,18 @@ sleep 15
 
 # Check service status
 echo "Verifying service health..."
-docker-compose ps
+docker compose ps
 
 echo ""
 
 # T023 continued: Verify health checks pass
 echo "[4/4] Checking container health status..."
-UNHEALTHY=$(docker-compose ps --filter "health=unhealthy" -q | wc -l)
-STARTING=$(docker-compose ps --filter "health=starting" -q | wc -l)
+UNHEALTHY=$(docker compose ps --filter "health=unhealthy" -q | wc -l)
+STARTING=$(docker compose ps --filter "health=starting" -q | wc -l)
 
 if [ "$UNHEALTHY" -gt 0 ]; then
     echo "⚠ WARNING: $UNHEALTHY container(s) are unhealthy"
-    echo "Run 'docker-compose ps' and 'docker-compose logs' to investigate"
+    echo "Run 'docker compose ps' and 'docker compose logs' to investigate"
     echo "$(date '+%Y-%m-%d %H:%M:%S') - WARNING: Unhealthy containers detected" >> "$LOG_FILE"
 elif [ "$STARTING" -gt 0 ]; then
     echo "⚠ NOTE: $STARTING container(s) are still starting up"
@@ -85,6 +85,6 @@ echo "Deployment Complete!"
 echo "========================================="
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Deployment completed successfully" >> "$LOG_FILE"
 echo ""
-echo "To view logs:     docker-compose logs -f"
-echo "To check status:  docker-compose ps"
+echo "To view logs:     docker compose logs -f"
+echo "To check status:  docker compose ps"
 echo "To view history:  cat deployment.log"
