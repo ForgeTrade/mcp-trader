@@ -1,0 +1,71 @@
+name: mcp-trader
+
+services:
+  # Binance Provider (Rust gRPC server)
+  binance-provider:
+    build:
+      context: ./providers/binance-rs
+      dockerfile: Dockerfile.local
+    container_name: binance-provider
+    ports:
+      - "50053:50053"
+    environment:
+      - BINANCE_API_KEY=${BINANCE_API_KEY:-}
+      - BINANCE_API_SECRET=${BINANCE_API_SECRET:-}
+      - BINANCE_BASE_URL=${BINANCE_BASE_URL:-https://api.binance.com}
+      - ANALYTICS_DATA_PATH=/app/data/analytics
+      - RUST_LOG=${RUST_LOG:-info}
+    volumes:
+      # Persist analytics data
+      - binance-analytics:/app/data/analytics
+      # Optional: mount .env file for credentials
+      - ./providers/binance-rs/.env:/app/.env:ro
+    restart: unless-stopped
+    networks:
+      - mcp-network
+    healthcheck:
+      test: ["CMD", "/app/binance-provider", "--version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # MCP Gateway (Python SSE server)
+  mcp-gateway:
+    build:
+      context: ./mcp-gateway
+      dockerfile: Dockerfile
+    container_name: mcp-gateway
+    ports:
+      - "3001:3001"
+    environment:
+      - MCP_PROVIDERS=/app/providers.yaml
+      - MCP_SSE_PORT=3001
+    volumes:
+      # Mount providers configuration (Docker variant with container hostnames)
+      - ./mcp-gateway/providers.docker.yaml:/app/providers.yaml:ro
+    depends_on:
+      - binance-provider
+    restart: unless-stopped
+    networks:
+      - mcp-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('localhost', 3001), timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  # Persistent storage for analytics data
+  binance-analytics:
+    driver: local
+
+networks:
+  mcp-network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.88.0.0/16
+          gateway: 172.88.0.1

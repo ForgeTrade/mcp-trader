@@ -1,0 +1,28 @@
+# Build artifacts
+# target/  # Commented out - we need target/release/binance-provider for local build
+target/**
+!target/release/
+!target/release/binance-provider
+*.log
+
+# Development files
+.env
+.env.local
+
+# Documentation
+*.md
+!README.md
+
+# Test files
+benches/
+tests/
+
+# Scripts
+*.sh
+!build.sh
+
+# Service files
+*.service
+
+# Data directories
+data/

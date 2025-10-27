@@ -1,0 +1,13 @@
+# Providers configuration for Docker Compose deployment
+# Use container hostnames instead of localhost
+
+providers:
+  - name: binance
+    type: grpc
+    address: binance-provider:50053
+    enabled: true
+    metadata:
+      description: "Binance cryptocurrency trading provider"
+      version: "0.1.0"
+      features: ["orderbook", "orderbook_analytics", "market_report"]
+      environment: production

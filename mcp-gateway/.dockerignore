@@ -1,0 +1,32 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Development files
+.env
+.env.local
+
+# Test files
+tests/
+.pytest_cache/
+
+# Documentation
+*.md
+!README.md
+
+# IDE
+.vscode/
+.idea/
+.claude/
+
+# Scripts
+*.sh
+test_*.py

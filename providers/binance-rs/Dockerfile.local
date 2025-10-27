@@ -1,0 +1,28 @@
+# Binance Provider Dockerfile (Local Binary)
+# Simplified: Copy pre-built local binary instead of building in Docker
+
+FROM debian:trixie-slim
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy pre-built binary from local build
+COPY target/release/binance-provider /app/binance-provider
+
+# Create data directory for analytics
+RUN mkdir -p /app/data/analytics
+
+# Expose gRPC port
+EXPOSE 50053
+
+# Set environment defaults
+ENV RUST_LOG=info
+ENV ANALYTICS_DATA_PATH=/app/data/analytics
+
+# Run the provider in gRPC mode
+CMD ["/app/binance-provider", "--grpc"]
