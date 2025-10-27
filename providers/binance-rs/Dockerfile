@@ -20,7 +20,7 @@ WORKDIR /build
 COPY pkg/proto ./pkg/proto
 
 # Copy binance-provider specific files
-COPY providers/binance-rs/Cargo.toml providers/binance-rs/Cargo.lock providers/binance-rs/build.rs ./
+COPY providers/binance-rs/Cargo.toml providers/binance-rs/build.rs ./
 COPY providers/binance-rs/proto ./proto
 COPY providers/binance-rs/src ./src
 
