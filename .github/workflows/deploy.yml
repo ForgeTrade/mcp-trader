@@ -49,7 +49,7 @@ jobs:
 
           ssh -i ~/.ssh/deploy_key \
             ${{ secrets.DEPLOY_SERVER_USER }}@${{ secrets.DEPLOY_SERVER_HOST }} \
-            "cd /opt/mcp-trader && \
+            "cd ~/mcp-trader && \
              export BINANCE_IMAGE_TAG=${{ inputs.image_tag }} && \
              export GATEWAY_IMAGE_TAG=${{ inputs.image_tag }} && \
              ./scripts/deploy/pull-and-restart.sh"
