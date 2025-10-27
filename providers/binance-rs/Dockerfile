@@ -32,7 +32,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cp /build/target/release/binance-provider /tmp/binance-provider
 
 # Runtime stage
-FROM debian:bookworm-slim
+FROM debian:sid-slim
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
