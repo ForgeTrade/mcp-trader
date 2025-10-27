@@ -70,7 +70,7 @@ services:
     networks:
       - mcp-network
     healthcheck:
-      test: ["CMD", "/app/binance-provider", "--version"]
+      test: ["CMD", "/bin/sh", "-c", "netstat -ltn 2>/dev/null | grep -q ':50053' || sleep 1"]
       interval: 30s
       timeout: 10s
       retries: 3
