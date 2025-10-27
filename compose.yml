@@ -51,7 +51,7 @@ services:
   binance-provider:
     build:
       context: ./providers/binance-rs
-      dockerfile: Dockerfile.local
+      dockerfile: Dockerfile
     container_name: binance-provider
     ports:
       - "50053:50053"
