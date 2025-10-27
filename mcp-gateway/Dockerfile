@@ -16,10 +16,10 @@ WORKDIR /app
 # Copy proto files for code generation
 COPY pkg/proto ./pkg/proto
 
-# Copy project files
-COPY pyproject.toml uv.lock ./
-COPY mcp_gateway ./mcp_gateway
-COPY providers.yaml ./
+# Copy project files from mcp-gateway subdirectory
+COPY mcp-gateway/pyproject.toml mcp-gateway/uv.lock ./
+COPY mcp-gateway/mcp_gateway ./mcp_gateway
+COPY mcp-gateway/providers.yaml ./
 
 # Install dependencies with uv
 RUN uv pip install --system --no-cache -e .

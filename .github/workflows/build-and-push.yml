@@ -26,7 +26,7 @@ jobs:
             context: .
             dockerfile: ./providers/binance-rs/Dockerfile
           - name: mcp-gateway
-            context: ./mcp-gateway
+            context: .
             dockerfile: ./mcp-gateway/Dockerfile
 
     steps:
