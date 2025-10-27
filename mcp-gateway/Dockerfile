@@ -31,7 +31,8 @@ RUN mkdir -p mcp_gateway/generated && \
     --python_out=mcp_gateway/generated \
     --grpc_python_out=mcp_gateway/generated \
     pkg/proto/provider.proto && \
-    touch mcp_gateway/generated/__init__.py
+    touch mcp_gateway/generated/__init__.py && \
+    sed -i 's/^import provider_pb2/from . import provider_pb2/' mcp_gateway/generated/provider_pb2_grpc.py
 
 # Expose SSE server port
 EXPOSE 3001
