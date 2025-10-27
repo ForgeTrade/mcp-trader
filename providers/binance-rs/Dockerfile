@@ -9,16 +9,20 @@ RUN apt-get update && apt-get install -y \
     libprotobuf-dev \
     pkg-config \
     libssl-dev \
+    clang \
+    cmake \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
 
-# Copy manifests
-COPY Cargo.toml Cargo.lock build.rs ./
-COPY proto ./proto
+# Copy shared proto files
+COPY pkg/proto ./pkg/proto
 
-# Copy source
-COPY src ./src
+# Copy binance-provider specific files
+COPY providers/binance-rs/Cargo.toml providers/binance-rs/Cargo.lock providers/binance-rs/build.rs ./
+COPY providers/binance-rs/proto ./proto
+COPY providers/binance-rs/src ./src
 
 # Build release binary with all features
 # Note: This may take 5-10 minutes on first build

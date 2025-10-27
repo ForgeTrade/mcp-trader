@@ -50,8 +50,8 @@ services:
   # Binance Provider (Rust gRPC server)
   binance-provider:
     build:
-      context: ./providers/binance-rs
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./providers/binance-rs/Dockerfile
     container_name: binance-provider
     ports:
       - "50053:50053"
