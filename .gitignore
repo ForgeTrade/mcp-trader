@@ -60,6 +60,7 @@ providers/hello-go/internal/pb/
 .env
 .env.local
 *.log
+TRAEFIK_CREDENTIALS.txt
 
 # Docker
 *.pid

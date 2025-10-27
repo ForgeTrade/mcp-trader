@@ -1,6 +1,52 @@
 name: mcp-trader
 
 services:
+  # Traefik Reverse Proxy with Let's Encrypt
+  traefik:
+    image: traefik:v3.0
+    container_name: traefik
+    command:
+      # Enable API and dashboard
+      - "--api.dashboard=true"
+      - "--api.insecure=false"
+      # Docker provider
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=mcp-network"
+      # Entrypoints
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      # HTTP to HTTPS redirect
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      # Let's Encrypt configuration
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@context8.markets}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      # Logs
+      - "--log.level=${TRAEFIK_LOG_LEVEL:-INFO}"
+      - "--accesslog=true"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-certs:/letsencrypt
+    networks:
+      - mcp-network
+    restart: unless-stopped
+    labels:
+      # Traefik dashboard
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.context8.markets`)"
+      - "traefik.http.routers.traefik.entrypoints=websecure"
+      - "traefik.http.routers.traefik.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.traefik.service=api@internal"
+      # Traefik dashboard auth (set TRAEFIK_BASIC_AUTH in .env)
+      - "traefik.http.routers.traefik.middlewares=traefik-auth"
+      - "traefik.http.middlewares.traefik-auth.basicauth.users=${TRAEFIK_BASIC_AUTH}"
+
   # Binance Provider (Rust gRPC server)
   binance-provider:
     build:
@@ -36,8 +82,6 @@ services:
       context: ./mcp-gateway
       dockerfile: Dockerfile
     container_name: mcp-gateway
-    ports:
-      - "3001:3001"
     environment:
       - MCP_PROVIDERS=/app/providers.yaml
       - MCP_SSE_PORT=3001
@@ -46,6 +90,7 @@ services:
       - ./mcp-gateway/providers.docker.yaml:/app/providers.yaml:ro
     depends_on:
       - binance-provider
+      - traefik
     restart: unless-stopped
     networks:
       - mcp-network
@@ -55,10 +100,30 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+    labels:
+      # Enable Traefik
+      - "traefik.enable=true"
+      # HTTP Router
+      - "traefik.http.routers.mcp-gateway.rule=Host(`api.context8.markets`)"
+      - "traefik.http.routers.mcp-gateway.entrypoints=websecure"
+      - "traefik.http.routers.mcp-gateway.tls.certresolver=letsencrypt"
+      # Service
+      - "traefik.http.services.mcp-gateway.loadbalancer.server.port=3001"
+      # CORS middleware for SSE
+      - "traefik.http.routers.mcp-gateway.middlewares=mcp-cors"
+      - "traefik.http.middlewares.mcp-cors.headers.accesscontrolallowmethods=GET,POST,OPTIONS"
+      - "traefik.http.middlewares.mcp-cors.headers.accesscontrolalloworiginlist=*"
+      - "traefik.http.middlewares.mcp-cors.headers.accesscontrolallowheaders=*"
+      - "traefik.http.middlewares.mcp-cors.headers.accesscontrolmaxage=100"
+      - "traefik.http.middlewares.mcp-cors.headers.addvaryheader=true"
 
 volumes:
   # Persistent storage for analytics data
   binance-analytics:
+    driver: local
+
+  # Let's Encrypt certificates storage
+  traefik-certs:
     driver: local
 
 networks:
