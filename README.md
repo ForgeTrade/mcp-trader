@@ -1,5 +1,7 @@
 # MCP Gateway System
 
+[![Build and Push](https://github.com/forgequant/mcp-gateway/actions/workflows/build-and-push.yml/badge.svg)](https://github.com/forgequant/mcp-gateway/actions/workflows/build-and-push.yml)
+
 Model Context Protocol (MCP) gateway for orchestrating multiple capability providers.
 
 ## Breaking Changes

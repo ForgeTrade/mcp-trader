@@ -1,0 +1,69 @@
+name: Manual Deployment
+
+# Optional workflow for triggering deployment from GitHub UI
+# This workflow allows manual deployment without SSH access
+#
+# Setup required:
+# 1. Add GitHub repository secret: DEPLOY_SSH_KEY (private SSH key)
+# 2. Add GitHub repository secret: DEPLOY_SERVER_HOST (e.g., your-server.com)
+# 3. Add GitHub repository secret: DEPLOY_SERVER_USER (e.g., deploy)
+# 4. Ensure deployment scripts exist on server at /opt/mcp-trader/scripts/deploy/
+
+on:
+  # Manual trigger from GitHub Actions UI
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+      image_tag:
+        description: 'Image tag to deploy (e.g., latest, sha-abc1234)'
+        required: false
+        default: 'latest'
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.DEPLOY_SERVER_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to server
+        run: |
+          echo "Deploying to ${{ inputs.environment }} with image tag: ${{ inputs.image_tag }}"
+
+          ssh -i ~/.ssh/deploy_key \
+            ${{ secrets.DEPLOY_SERVER_USER }}@${{ secrets.DEPLOY_SERVER_HOST }} \
+            "cd /opt/mcp-trader && \
+             export BINANCE_IMAGE_TAG=${{ inputs.image_tag }} && \
+             export GATEWAY_IMAGE_TAG=${{ inputs.image_tag }} && \
+             ./scripts/deploy/pull-and-restart.sh"
+
+      - name: Deployment status
+        if: success()
+        run: |
+          echo "✓ Deployment completed successfully"
+          echo "Environment: ${{ inputs.environment }}"
+          echo "Image tag: ${{ inputs.image_tag }}"
+
+      - name: Deployment failed
+        if: failure()
+        run: |
+          echo "✗ Deployment failed"
+          echo "Check the logs above for errors"
+          exit 1

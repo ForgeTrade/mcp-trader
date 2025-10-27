@@ -1,0 +1,34 @@
+# Docker Compose Override for Local Development
+#
+# This file is automatically merged with compose.yml when running docker-compose commands.
+# It overrides the GHCR image references with local build contexts for development.
+#
+# Purpose:
+# - Production deployment uses pre-built images from GHCR (compose.yml)
+# - Local development builds images from source code (this file)
+#
+# Usage:
+# - docker-compose up      → Uses both compose.yml + compose.override.yml (builds locally)
+# - To use GHCR images locally: docker-compose -f compose.yml up
+#
+# To disable this override:
+# - Rename to compose.override.yml.disabled
+# - Or use: docker-compose -f compose.yml up
+
+name: mcp-trader
+
+services:
+  binance-provider:
+    build:
+      context: .
+      dockerfile: ./providers/binance-rs/Dockerfile
+    # Override the image directive from compose.yml to use local build
+    # The 'image:' line is kept for tagging the locally-built image
+    image: mcp-trader-binance-provider:dev
+
+  mcp-gateway:
+    build:
+      context: ./mcp-gateway
+      dockerfile: Dockerfile
+    # Override the image directive from compose.yml to use local build
+    image: mcp-trader-mcp-gateway:dev

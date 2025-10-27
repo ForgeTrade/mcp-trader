@@ -49,9 +49,9 @@ services:
 
   # Binance Provider (Rust gRPC server)
   binance-provider:
-    build:
-      context: .
-      dockerfile: ./providers/binance-rs/Dockerfile
+    # Use pre-built image from GitHub Container Registry
+    # For local development with builds, use compose.override.yml
+    image: ghcr.io/forgequant/mcp-gateway/binance-provider:${BINANCE_IMAGE_TAG:-latest}
     container_name: binance-provider
     ports:
       - "50053:50053"
@@ -78,9 +78,9 @@ services:
 
   # MCP Gateway (Python SSE server)
   mcp-gateway:
-    build:
-      context: ./mcp-gateway
-      dockerfile: Dockerfile
+    # Use pre-built image from GitHub Container Registry
+    # For local development with builds, use compose.override.yml
+    image: ghcr.io/forgequant/mcp-gateway/mcp-gateway:${GATEWAY_IMAGE_TAG:-latest}
     container_name: mcp-gateway
     environment:
       - MCP_PROVIDERS=/app/providers.yaml
