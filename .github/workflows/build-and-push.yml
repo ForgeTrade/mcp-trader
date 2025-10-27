@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - 019-github-cicd-pipeline  # Temporary: for testing Dockerfile fix
   # Allow manual triggering for testing
   workflow_dispatch:
 
